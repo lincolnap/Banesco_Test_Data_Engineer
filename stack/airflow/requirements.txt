@@ -1,0 +1,19 @@
+# Airflow Spark Provider
+apache-airflow-providers-apache-spark==4.8.0
+
+# MinIO/S3 Support
+boto3
+botocore
+
+# Spark Support (lightweight client only)
+# Note: We only need spark-submit client, not full PySpark
+
+# Data Processing
+pandas
+requests
+
+# Additional utilities
+findspark
+
+# Additional Airflow providers
+apache-airflow-providers-postgres==5.6.0
