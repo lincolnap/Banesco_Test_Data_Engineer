@@ -20,34 +20,99 @@ def get_airflow_var(var_name, default_value=None):
         return default_value
 
 def get_cleanup_sql_for_date_range():
-    """Generate SQL cleanup commands for the current YearMon variable"""
-    from datetime import datetime, timedelta
+    """Generate SQL cleanup commands for the current YearMon variable(s)"""
+    from airflow.models import Variable
     
     try:
-        year_month = Variable.get('YearMon', '202304')
-        year = int(year_month[:4])
-        month = int(year_month[4:6])
+        year_mon_input = Variable.get('YearMon', '202304')
         
-        start_date = datetime(year, month, 1).date()
-        if month == 12:
-            end_date = datetime(year + 1, 1, 1).date() - timedelta(days=1)
+        # Parse year_month - can be single value or comma-separated list
+        if ',' in year_mon_input:
+            year_mon_list = [ym.strip() for ym in year_mon_input.split(',')]
         else:
-            end_date = datetime(year, month + 1, 1).date() - timedelta(days=1)
+            year_mon_list = [year_mon_input]
         
-        # Generate cleanup SQL
+        # Format the array for PostgreSQL
+        postgres_array = "ARRAY['" + "','".join(year_mon_list) + "']"
+        
         cleanup_sql = f"""
-        -- Cleanup data for {year_month} ({start_date} to {end_date})
-        DELETE FROM analytics.agg_user_behavior WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
-        DELETE FROM analytics.agg_station_metrics WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
-        DELETE FROM analytics.agg_geographical_analysis WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
-        DELETE FROM analytics.agg_daily_metrics WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
-        DELETE FROM analytics.fact_rides WHERE dt BETWEEN '{start_date}' AND '{end_date}';
-        DELETE FROM analytics.dim_time WHERE time_key BETWEEN '{start_date}' AND '{end_date}';
+        -- Cleanup data for months: {', '.join(year_mon_list)}
+        
+        DO $$
+        DECLARE
+            year_month text;
+            start_date date;
+            end_date date;
+            deleted_count int;
+            total_processed int := 0;
+        BEGIN
+            RAISE NOTICE 'Starting cleanup for months: {', '.join(year_mon_list)}';
+            
+            -- Loop through each year-month
+            FOREACH year_month IN ARRAY {postgres_array}
+            LOOP
+                BEGIN
+                    -- Validate basic format first
+                    IF LENGTH(year_month) != 6 THEN
+                        RAISE NOTICE 'Skipping invalid year_month (wrong length): %', year_month;
+                        CONTINUE;
+                    END IF;
+                    
+                    -- Calculate dates using a simpler approach
+                    start_date := TO_DATE(year_month, 'YYYYMM');
+                    end_date := (start_date + INTERVAL '1 month' - INTERVAL '1 day')::date;
+                    
+                    RAISE NOTICE 'Processing: % (%, to %)', year_month, start_date, end_date;
+                    
+                    -- Delete operations in transaction per month
+                    DELETE FROM analytics.agg_user_behavior WHERE date_key BETWEEN start_date AND end_date;
+                    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+                    RAISE NOTICE '  - agg_user_behavior: % rows', deleted_count;
+                    
+                    DELETE FROM analytics.agg_station_metrics WHERE date_key BETWEEN start_date AND end_date;
+                    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+                    RAISE NOTICE '  - agg_station_metrics: % rows', deleted_count;
+                    
+                    DELETE FROM analytics.agg_geographical_analysis WHERE date_key BETWEEN start_date AND end_date;
+                    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+                    RAISE NOTICE '  - agg_geographical_analysis: % rows', deleted_count;
+                    
+                    DELETE FROM analytics.agg_daily_metrics WHERE date_key BETWEEN start_date AND end_date;
+                    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+                    RAISE NOTICE '  - agg_daily_metrics: % rows', deleted_count;
+                    
+                    DELETE FROM analytics.fact_rides WHERE dt BETWEEN start_date AND end_date;
+                    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+                    RAISE NOTICE '  - fact_rides: % rows', deleted_count;
+                    
+                    DELETE FROM analytics.dim_time 
+                    WHERE time_key BETWEEN start_date AND end_date
+                    AND NOT EXISTS (
+                        SELECT 1 FROM analytics.fact_rides WHERE dt = dim_time.time_key
+                    );
+                    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+                    RAISE NOTICE '  - dim_time: % rows', deleted_count;
+                    
+                    total_processed := total_processed + 1;
+                    
+                EXCEPTION WHEN OTHERS THEN
+                    RAISE WARNING 'Failed to process month %: %', year_month, SQLERRM;
+                    CONTINUE;
+                END;
+            END LOOP;
+            
+            RAISE NOTICE 'Cleanup completed. Successfully processed % out of % months', 
+                         total_processed, array_length({postgres_array}, 1);
+        END $$;
 
-        -- Analyze tables for performance
+        -- Update statistics for query optimizer
         ANALYZE analytics.fact_rides;
         ANALYZE analytics.dim_stations;
         ANALYZE analytics.dim_time;
+        ANALYZE analytics.agg_user_behavior;
+        ANALYZE analytics.agg_station_metrics;
+        ANALYZE analytics.agg_geographical_analysis;
+        ANALYZE analytics.agg_daily_metrics;
         """
         
         return cleanup_sql.strip()
@@ -82,7 +147,6 @@ extract_task = SparkSubmitOperator(
     application='/opt/airflow/scripts/divvy_bikes_extract.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
-    jars='/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar',
     conf={
         'spark.sql.adaptive.enabled': 'true',
         'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
@@ -112,7 +176,6 @@ transform_task = SparkSubmitOperator(
     application='/opt/airflow/scripts/divvy_bikes_transformation.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
-    jars='/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar',
     conf={
         'spark.sql.adaptive.enabled': 'true',
         'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
@@ -141,58 +204,7 @@ transform_task = SparkSubmitOperator(
 cleanup_postgres_task = PostgresOperator(
     task_id='Cleanup_PostgreSQL_Data',
     postgres_conn_id='postgres_default',
-    sql="""
-    -- Cleanup data for month {{ var.value.YearMon }}
-    
-    -- Calculate date range
-    DO $$
-    DECLARE
-        start_date date;
-        end_date date;
-        deleted_count int;
-    BEGIN
-        -- Calculate start and end dates for the month
-        start_date := DATE_TRUNC('month', TO_DATE('{{ var.value.YearMon }}01', 'YYYYMMDD'))::date;
-        end_date := (DATE_TRUNC('month', TO_DATE('{{ var.value.YearMon }}01', 'YYYYMMDD')) + INTERVAL '1 month' - INTERVAL '1 day')::date;
-        
-        RAISE NOTICE 'Cleaning up data for period: % to %', start_date, end_date;
-        
-        -- Delete aggregated tables first (no FK dependencies)
-        DELETE FROM analytics.agg_user_behavior WHERE date_key BETWEEN start_date AND end_date;
-        GET DIAGNOSTICS deleted_count = ROW_COUNT;
-        RAISE NOTICE 'Deleted % rows from agg_user_behavior', deleted_count;
-        
-        DELETE FROM analytics.agg_station_metrics WHERE date_key BETWEEN start_date AND end_date;
-        GET DIAGNOSTICS deleted_count = ROW_COUNT;
-        RAISE NOTICE 'Deleted % rows from agg_station_metrics', deleted_count;
-        
-        DELETE FROM analytics.agg_geographical_analysis WHERE date_key BETWEEN start_date AND end_date;
-        GET DIAGNOSTICS deleted_count = ROW_COUNT;
-        RAISE NOTICE 'Deleted % rows from agg_geographical_analysis', deleted_count;
-        
-        DELETE FROM analytics.agg_daily_metrics WHERE date_key BETWEEN start_date AND end_date;
-        GET DIAGNOSTICS deleted_count = ROW_COUNT;
-        RAISE NOTICE 'Deleted % rows from agg_daily_metrics', deleted_count;
-        
-        -- Delete fact table
-        DELETE FROM analytics.fact_rides WHERE dt BETWEEN start_date AND end_date;
-        GET DIAGNOSTICS deleted_count = ROW_COUNT;
-        RAISE NOTICE 'Deleted % rows from fact_rides', deleted_count;
-        
-        -- Delete dim_time (only if no other facts reference it)
-        DELETE FROM analytics.dim_time WHERE time_key BETWEEN start_date AND end_date
-        AND NOT EXISTS (SELECT 1 FROM analytics.fact_rides WHERE dt = dim_time.time_key);
-        GET DIAGNOSTICS deleted_count = ROW_COUNT;
-        RAISE NOTICE 'Deleted % rows from dim_time', deleted_count;
-        
-        RAISE NOTICE 'Cleanup completed successfully for {{ var.value.YearMon }}';
-    END $$;
-    
-    -- Analyze tables for performance
-    ANALYZE analytics.fact_rides;
-    ANALYZE analytics.dim_stations;
-    ANALYZE analytics.dim_time;
-    """,
+    sql=get_cleanup_sql_for_date_range(),
     dag=dag,
 )
 
@@ -202,7 +214,6 @@ load_to_postgres_task = SparkSubmitOperator(
     application='/opt/airflow/scripts/divvy_bikes_load_to_postgres.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.6.0',
-    jars='/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar',
     conf={
         'spark.sql.adaptive.enabled': 'true',
         'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',

@@ -17,7 +17,7 @@ def setup_variables():
         from airflow.utils.db import create_session
         
         variables = {
-            "YearMon": "202304",
+            "YearMon": "202304,202305,202306",
             "MINIO_ENDPOINT": "minio:9000",
             "MINIO_ACCESS_KEY": "minioadmin",
             "MINIO_SECRET_KEY": "minioadmin123",

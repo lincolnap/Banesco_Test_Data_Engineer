@@ -55,9 +55,7 @@ COPY stack/airflow/scripts/ /opt/airflow/scripts/
 # Copy setup parameters
 COPY setup_parameters/ /opt/airflow/setup_parameters/
 
-# Copy Spark JARs for S3A support
-COPY stack/spark/jars/hadoop-aws-3.3.4.jar /opt/spark/jars/
-COPY stack/spark/jars/aws-java-sdk-bundle-1.12.262.jar /opt/spark/jars/
+# S3A JARs will be downloaded automatically by Spark using packages configuration
 
 # Set the entrypoint
 ENTRYPOINT ["/opt/airflow/setup_parameters/entrypoint.sh"]
