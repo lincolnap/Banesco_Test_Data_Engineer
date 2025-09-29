@@ -22,7 +22,11 @@ from chart_helpers import (
     create_weekly_patterns_chart,
     create_station_popularity_chart,
     create_top_routes_chart,
-    create_database_stats_cards
+    create_database_stats_cards,
+    create_quarter_member_chart,
+    create_quarter_monthly_chart,
+    create_comparison_chart,
+    analyze_growth_trend
 )
 
 # Page configuration
@@ -232,6 +236,143 @@ if page == "🚴 Divvy Bikes Analytics":
         if not time_df.empty:
             fig_time = create_time_of_day_chart(time_df)
             st.plotly_chart(fig_time, use_container_width=True)
+
+elif page == "📈 Temporal Analysis":
+    st.header("📈 Temporal Analysis - Q1 & Comparative Insights")
+    
+    # Initialize database connector
+    db_connector = DatabaseConnector()
+    
+    # Check database connection
+    try:
+        test_data = db_connector.get_member_distance_kpi()
+        if test_data.empty:
+            st.error("❌ No data available. Please ensure data has been loaded to PostgreSQL.")
+            st.stop()
+    except Exception as e:
+        st.error(f"❌ Database connection error: {str(e)}")
+        st.stop()
+    
+    # Quarter Selection
+    quarter_options = {
+        "Q1 (Enero-Marzo)": 1,
+        "Q2 (Abril-Junio)": 2, 
+        "Q3 (Julio-Septiembre)": 3,
+        "Q4 (Octubre-Diciembre)": 4
+    }
+    
+    selected_quarter_text = st.selectbox(
+        "Selecciona el cuartil para analizar:",
+        list(quarter_options.keys()),
+        index=1,  # Default to Q2 since we have April data
+        key="quarter_selector"
+    )
+    
+    selected_quarter = quarter_options[selected_quarter_text]
+    
+    # Quarter Analysis Section
+    st.subheader(f"📅 {selected_quarter_text} Analysis")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Quarter KPIs
+        quarter_data = db_connector.get_quarter_analysis(selected_quarter)
+        if not quarter_data.empty and quarter_data.iloc[0]['total_rides'] > 0:
+            total_rides = quarter_data.iloc[0]['total_rides']
+            total_distance = quarter_data.iloc[0]['total_distance'] or 0
+            avg_distance = quarter_data.iloc[0]['avg_distance'] or 0
+            
+            st.metric(f"{selected_quarter_text} Total Rides", f"{total_rides:,}")
+            st.metric(f"{selected_quarter_text} Total Distance", f"{total_distance:,.1f} km")
+            st.metric(f"{selected_quarter_text} Avg Distance", f"{avg_distance:.2f} km")
+        else:
+            st.warning(f"No data available for {selected_quarter_text}")
+    
+    with col2:
+        # Quarter by Member Type
+        quarter_member_data = db_connector.get_quarter_by_member_type(selected_quarter)
+        if not quarter_member_data.empty:
+            fig_quarter_member = create_quarter_member_chart(quarter_member_data, selected_quarter_text)
+            st.plotly_chart(fig_quarter_member, use_container_width=True)
+        else:
+            st.warning(f"No member data available for {selected_quarter_text}")
+    
+    # Monthly trend in selected quarter
+    st.subheader(f"📊 {selected_quarter_text} Monthly Trend")
+    quarter_monthly = db_connector.get_quarter_monthly_trend(selected_quarter)
+    if not quarter_monthly.empty:
+        fig_quarter_monthly = create_quarter_monthly_chart(quarter_monthly, selected_quarter_text)
+        st.plotly_chart(fig_quarter_monthly, use_container_width=True)
+    else:
+        st.warning(f"No monthly trend data available for {selected_quarter_text}")
+    
+    # Separator
+    st.markdown("---")
+    
+    # Comparative Analysis Section
+    st.subheader("⚖️ Comparative Analysis")
+    
+    # Comparison type selector
+    comparison_type = st.selectbox(
+        "Select comparison period:",
+        ["Días (Day-to-Day)", "Meses (Month-to-Month)", "Cuartiles (Quarter-to-Quarter)", "Años (Year-to-Year)"],
+        key="comparison_type"
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Period selector based on comparison type
+        if comparison_type == "Días (Day-to-Day)":
+            comparison_data = db_connector.get_daily_comparison()
+            st.subheader("📈 Daily Rides Comparison")
+        elif comparison_type == "Meses (Month-to-Month)":
+            comparison_data = db_connector.get_monthly_comparison()
+            st.subheader("📈 Monthly Rides Comparison")
+        elif comparison_type == "Cuartiles (Quarter-to-Quarter)":
+            comparison_data = db_connector.get_quarterly_comparison()
+            st.subheader("📈 Quarterly Rides Comparison")
+        else:  # Años
+            comparison_data = db_connector.get_yearly_comparison()
+            st.subheader("📈 Yearly Rides Comparison")
+        
+        if not comparison_data.empty:
+            # Calculate change metrics
+            if len(comparison_data) >= 2:
+                current_period = comparison_data.iloc[-1]['total_rides']
+                previous_period = comparison_data.iloc[-2]['total_rides']
+                change = current_period - previous_period
+                change_pct = (change / previous_period) * 100 if previous_period > 0 else 0
+                
+                # Display metrics
+                st.metric(
+                    "Current Period", 
+                    f"{current_period:,}", 
+                    delta=f"{change:+,} ({change_pct:+.1f}%)"
+                )
+        else:
+            st.warning("No comparison data available")
+    
+    with col2:
+        # Comparison chart
+        if not comparison_data.empty:
+            fig_comparison = create_comparison_chart(comparison_data, comparison_type)
+            st.plotly_chart(fig_comparison, use_container_width=True)
+    
+    # Trend Analysis
+    st.subheader("📊 Trend Analysis")
+    if not comparison_data.empty:
+        # Growth trend analysis
+        growth_analysis = analyze_growth_trend(comparison_data)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Trend Direction", growth_analysis['direction'])
+        with col2:
+            st.metric("Average Growth", f"{growth_analysis['avg_growth']:.1f}%")
+        with col3:
+            st.metric("Periods Analyzed", growth_analysis['periods'])
 
 elif page == "🏠 System Dashboard":
     st.header("📊 System Overview")

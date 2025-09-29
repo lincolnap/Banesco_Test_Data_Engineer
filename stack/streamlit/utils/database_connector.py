@@ -227,3 +227,117 @@ class DatabaseConnector:
         FROM analytics.fact_rides;
         """
         return self.execute_query(query)
+    
+    def get_quarter_analysis(self, quarter):
+        """Get quarter analysis for specified quarter"""
+        query = """
+        SELECT 
+            COUNT(*) as total_rides,
+            ROUND(SUM(total_distance), 2) as total_distance,
+            ROUND(AVG(total_distance), 2) as avg_distance,
+            ROUND(AVG(ride_duration_minutes), 2) as avg_duration
+        FROM analytics.fact_rides 
+        WHERE EXTRACT(QUARTER FROM dt) = %s;
+        """
+        return self.execute_query(query, params=(quarter,))
+    
+    def get_quarter_by_member_type(self, quarter):
+        """Get quarter analysis by member type for specified quarter"""
+        query = """
+        SELECT 
+            member_casual,
+            COUNT(*) as total_rides,
+            ROUND(SUM(total_distance), 2) as total_distance,
+            ROUND(AVG(total_distance), 2) as avg_distance
+        FROM analytics.fact_rides 
+        WHERE EXTRACT(QUARTER FROM dt) = %s
+        GROUP BY member_casual
+        ORDER BY member_casual;
+        """
+        return self.execute_query(query, params=(quarter,))
+    
+    def get_quarter_monthly_trend(self, quarter):
+        """Get monthly trend within specified quarter"""
+        query = """
+        SELECT 
+            EXTRACT(MONTH FROM dt) as month,
+            CASE EXTRACT(MONTH FROM dt)
+                WHEN 1 THEN 'January'
+                WHEN 2 THEN 'February'
+                WHEN 3 THEN 'March'
+                WHEN 4 THEN 'April'
+                WHEN 5 THEN 'May'
+                WHEN 6 THEN 'June'
+                WHEN 7 THEN 'July'
+                WHEN 8 THEN 'August'
+                WHEN 9 THEN 'September'
+                WHEN 10 THEN 'October'
+                WHEN 11 THEN 'November'
+                WHEN 12 THEN 'December'
+            END as month_name,
+            COUNT(*) as total_rides,
+            ROUND(SUM(total_distance), 2) as total_distance
+        FROM analytics.fact_rides 
+        WHERE EXTRACT(QUARTER FROM dt) = %s
+        GROUP BY EXTRACT(MONTH FROM dt)
+        ORDER BY month;
+        """
+        return self.execute_query(query, params=(quarter,))
+    
+    def get_daily_comparison(self):
+        """Get daily comparison for last 30 days"""
+        query = """
+        SELECT 
+            dt as period,
+            TO_CHAR(dt, 'YYYY-MM-DD') as period_label,
+            COUNT(*) as total_rides,
+            ROUND(SUM(total_distance), 2) as total_distance
+        FROM analytics.fact_rides 
+        WHERE dt >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY dt
+        ORDER BY dt;
+        """
+        return self.execute_query(query)
+    
+    def get_monthly_comparison(self):
+        """Get monthly comparison"""
+        query = """
+        SELECT 
+            DATE_TRUNC('month', dt) as period,
+            TO_CHAR(dt, 'YYYY-MM') as period_label,
+            COUNT(*) as total_rides,
+            ROUND(SUM(total_distance), 2) as total_distance
+        FROM analytics.fact_rides 
+        GROUP BY DATE_TRUNC('month', dt), TO_CHAR(dt, 'YYYY-MM')
+        ORDER BY period;
+        """
+        return self.execute_query(query)
+    
+    def get_quarterly_comparison(self):
+        """Get quarterly comparison"""
+        query = """
+        SELECT 
+            EXTRACT(YEAR FROM dt) as year,
+            EXTRACT(QUARTER FROM dt) as quarter,
+            EXTRACT(YEAR FROM dt) || '-Q' || EXTRACT(QUARTER FROM dt) as period_label,
+            COUNT(*) as total_rides,
+            ROUND(SUM(total_distance), 2) as total_distance
+        FROM analytics.fact_rides 
+        GROUP BY EXTRACT(YEAR FROM dt), EXTRACT(QUARTER FROM dt)
+        ORDER BY year, quarter;
+        """
+        return self.execute_query(query)
+    
+    def get_yearly_comparison(self):
+        """Get yearly comparison"""
+        query = """
+        SELECT 
+            EXTRACT(YEAR FROM dt) as year,
+            EXTRACT(YEAR FROM dt)::text as period_label,
+            COUNT(*) as total_rides,
+            ROUND(SUM(total_distance), 2) as total_distance
+        FROM analytics.fact_rides 
+        GROUP BY EXTRACT(YEAR FROM dt)
+        ORDER BY year;
+        """
+        return self.execute_query(query)

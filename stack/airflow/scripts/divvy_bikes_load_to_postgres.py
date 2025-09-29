@@ -36,6 +36,7 @@ def create_spark_session(app_name="DivvyBikes_LoadToPostgres"):
         .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
         .config("spark.sql.broadcastTimeout", "36000") \
         .config("spark.sql.adaptive.maxShuffledHashJoinLocalMapThreshold", "100m") \
+        .config("spark.sql.sources.partitionOverwriteMode", "dynamic") \
         .config("spark.jars", ",".join(jar_paths)) \
         .config("spark.hadoop.fs.s3a.endpoint", f"http://{config['MINIO_ENDPOINT']}") \
         .config("spark.hadoop.fs.s3a.access.key", f"{config['MINIO_ACCESS_KEY']}") \
@@ -467,7 +468,7 @@ def main():
         spark = create_spark_session()
         
         # Configuration
-        staging_path = f"s3a://{args.input_bucket}/table_banesco_divvy_bikes/"
+        staging_path = f"s3a://{args.input_bucket}/banes_stage_divvy_bikes/"
         
         # PostgreSQL connection properties
         connection_properties = {

@@ -78,6 +78,7 @@ def create_spark_session(config):
         .config("spark.executorEnv.PYSPARK_PYTHON", worker_python) \
         .config("spark.python.worker.memory", "1g") \
         .config("spark.python.worker.reuse", "true") \
+        .config("spark.sql.sources.partitionOverwriteMode", "dynamic") \
         .config("spark.hadoop.fs.s3a.endpoint", f"http://{config['MINIO_ENDPOINT']}") \
         .config("spark.hadoop.fs.s3a.access.key", f"{config['MINIO_ACCESS_KEY']}") \
         .config("spark.hadoop.fs.s3a.secret.key", f"{config['MINIO_SECRET_KEY']}") \
@@ -185,6 +186,7 @@ def clean_and_transform_data(df):
     
     # Add derived date/time columns
     df_clean = df_clean.withColumn("start_date", to_date(col("started_at_ts"))) \
+                       .withColumn("dt", to_date(col("started_at_ts"))) \
                        .withColumn("start_hour", hour(col("started_at_ts"))) \
                        .withColumn("start_day_of_week", dayofweek(col("started_at_ts"))) \
                        .withColumn("start_month", month(col("started_at_ts"))) \
@@ -292,7 +294,6 @@ def save_transformed_data(df, output_path, partition_columns=None, spark_session
         print(f"💾 Saving transformed data to staging zone...")
         print(f"📍 Path: {output_path}")
         
-        # Prepare write operation
         writer = df.write.mode("overwrite") \
                    .option("compression", "snappy") \
                    .option("spark.sql.parquet.compression.codec", "snappy")
@@ -373,8 +374,8 @@ def main():
     # Paths
     input_bucket = config['INPUT_BUCKET']
     output_bucket = config['OUTPUT_BUCKET']
-    Table_name = "table_banesco_divvy_bikes"
-    input_path = f"s3a://{input_bucket}/divvy-bikes/"
+    Table_name = "banes_stage_divvy_bikes"
+    input_path = f"s3a://{input_bucket}/banes_raw_divvy_bikes/"
     output_path = f"s3a://{output_bucket}/{Table_name}"
     
     print(f"📊 Processing data for: {year_month}")
@@ -405,8 +406,8 @@ def main():
         # Generate summary before saving
         generate_data_summary(final_df)
         
-        # Save transformed data with partitioning
-        partition_columns = ["processing_date"]
+        # Save transformed data with partitioning by dt (date)
+        partition_columns = ["dt"]
         success, saved_path = save_transformed_data(final_df, output_path, partition_columns, spark)
         
         if success:
