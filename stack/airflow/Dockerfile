@@ -30,7 +30,7 @@ ENV PYSPARK_DRIVER_PYTHON=/usr/bin/python3
 RUN ln -sf /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/java-17-openjdk-amd64
 
 # Copy Spark configuration
-COPY spark-defaults.conf $SPARK_HOME/conf/spark-defaults.conf
+COPY stack/spark/config/spark-defaults.conf $SPARK_HOME/conf/spark-defaults.conf
 
 # Verify installations
 RUN java -version && echo "Java installation verified" && \
@@ -40,7 +40,7 @@ RUN java -version && echo "Java installation verified" && \
 USER airflow
 
 # Copy requirements file
-COPY requirements.txt /tmp/requirements.txt
+COPY stack/airflow/requirements.txt /tmp/requirements.txt
 
 # Install Python packages
 RUN pip install --upgrade pip && \
@@ -50,7 +50,13 @@ RUN pip install --upgrade pip && \
 WORKDIR /opt/airflow
 
 # Copy scripts directory
-COPY scripts/ /opt/airflow/scripts/
+COPY stack/airflow/scripts/ /opt/airflow/scripts/
+
+# Copy setup parameters
+COPY setup_parameters/ /opt/airflow/setup_parameters/
+
+# Set the entrypoint
+ENTRYPOINT ["/opt/airflow/setup_parameters/entrypoint.sh"]
 
 # Default command
-CMD ["airflow", "scheduler"]
+CMD ["scheduler"]

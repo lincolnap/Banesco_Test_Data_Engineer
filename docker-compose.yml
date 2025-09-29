@@ -147,7 +147,7 @@ services:
     depends_on:
       airflow-db:
         condition: service_healthy
-    command: airflow scheduler
+    command: scheduler
     healthcheck:
       test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-webserver.pid ]"]
       interval: 30s
@@ -190,7 +190,7 @@ services:
     depends_on:
       airflow-db:
         condition: service_healthy
-    command: airflow webserver
+    command: webserver
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
