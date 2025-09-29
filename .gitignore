@@ -11,6 +11,12 @@ stack/minio/config/
 stack/postgres/init/
 stack/airflow-db/init/
 
+# Cases use directories
+Cases use/Divvy_Bikes/
+
+# Large JAR files (too big for GitHub)
+stack/spark/jars/
+
 # OS files
 .DS_Store
 Thumbs.db

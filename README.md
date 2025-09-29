@@ -69,6 +69,27 @@ make --version
 
 ## 🚀 Quick Start
 
+### Option 1: Complete Pipeline Setup (Recommended)
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd Banaesco_test_dataengineer
+   ```
+
+2. **Start the Divvy Bikes Pipeline**
+   ```bash
+   make start
+   ```
+
+3. **Access the services**
+   - 🔧 **Airflow UI**: http://localhost:8080 (admin/admin)
+   - 📈 **Spark Master**: http://localhost:8081
+   - 💾 **MinIO Console**: http://localhost:9001 (minioadmin/minioadmin123)
+   - 📊 **Dashboard**: http://localhost:8501
+
+### Option 2: Basic Stack Setup
+
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
@@ -77,7 +98,7 @@ make --version
 
 2. **Start the stack**
    ```bash
-   make up
+   make start-stack
    ```
 
 3. **Access the services**
@@ -156,41 +177,34 @@ The project includes a comprehensive Makefile with the following commands:
 
 #### Basic Operations
 ```bash
-make up          # Start the entire stack
-make down        # Stop the entire stack
-make restart     # Restart the entire stack
-make build       # Build custom images
+make start       # Start the complete pipeline (recommended)
+make start-stack # Start only the stack (without full setup)
+make stop        # Stop all services
+make restart     # Restart all services
+make build       # Build custom Airflow image
+make clean       # Clean up containers and volumes
 ```
 
-#### Service Management
+#### Pipeline Management
 ```bash
-make up-svc svc=postgres      # Start specific service
-make down-svc svc=kafka       # Stop specific service
-make restart-svc svc=airflow  # Restart specific service
-make logs-svc svc=postgres    # View service logs
+make deploy      # Deploy scripts to MinIO
+make setup-vars  # Setup Airflow variables
+make setup-conns # Setup Airflow connections
+make test        # Run integration tests
+make test-minio  # Test MinIO access
 ```
 
 #### Monitoring and Debugging
 ```bash
-make ps          # Show container status
-make logs        # View all logs
-make health      # Check service health
-make status      # Show service status
-```
-
-#### Database Access
-```bash
-make shell-postgres  # PostgreSQL shell
-make shell-mongodb   # MongoDB shell
-make shell-kafka     # Kafka shell
-make shell-airflow   # Airflow shell
-```
-
-#### Utility Commands
-```bash
+make status      # Check status of all services
+make logs        # View logs from all services
 make urls        # Show all service URLs
-make config      # Show Docker Compose configuration
-make init        # Initialize Airflow database
+```
+
+#### Quick Setup
+```bash
+make quick-setup # Build + start + deploy (complete setup)
+make help        # Show all available commands
 ```
 
 ### Manual Docker Compose Commands
@@ -273,11 +287,38 @@ make recreate
 
 ### Custom DAGs
 
-Add your Airflow DAGs to `stack/airflow/dags/`. The example DAG demonstrates:
-- Data extraction
+Add your Airflow DAGs to `stack/airflow/dags/`. The project includes:
+
+#### Divvy Bikes Pipeline (`data_bike_pipeline.py`)
+- **Extract**: Downloads Divvy Bikes data using Spark
+- **Transform**: Data processing and quality checks
+- **Load**: Saves data to MinIO in Parquet format
+- **Report**: Generates analytics and summaries
+- **Cleanup**: Removes temporary files
+
+#### Example DAG (`example_dag.py`)
+- Basic data extraction
 - Transformation
 - Loading to PostgreSQL
 - Report generation
+
+### Pipeline Management
+
+The Divvy Bikes pipeline includes comprehensive management tools:
+
+```bash
+# Check pipeline status
+make status
+
+# Deploy scripts to MinIO
+make deploy
+
+# Run integration tests
+make test
+
+# Setup Airflow connections
+make setup-conns
+```
 
 ### Extending Streamlit Dashboard
 
