@@ -28,7 +28,7 @@ def setup_airflow_variables():
         
         # PostgreSQL Configuration
         'POSTGRES_HOST': 'postgres',
-        'POSTGRES_PORT': '5432',
+        'POSTGRES_PORT': '5432',  # Internal port within Docker network
         'POSTGRES_DB': 'banesco_test',
         'POSTGRES_USER': 'postgres',
         'POSTGRES_PASSWORD': 'postgres123',
