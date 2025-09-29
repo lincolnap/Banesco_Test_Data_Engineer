@@ -68,30 +68,27 @@ start: check-docker create-dirs
 	@echo "=========================================="
 	@echo -e "$(BLUE)[INFO]$(NC) Starting PostgreSQL..."
 	@docker-compose up -d postgres
-	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow Database..."
-	@docker-compose up -d airflow-db
 	@echo -e "$(BLUE)[INFO]$(NC) Starting MinIO..."
 	@docker-compose up -d minio
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Spark Master..."
 	@docker-compose up -d spark-master
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Spark Worker..."
 	@docker-compose up -d spark-worker
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Streamlit dashboard..."
+	@$(MAKE) start-streamlit
+	@echo -e "$(BLUE)[INFO]$(NC) Creating MinIO buckets..."
+	@$(MAKE) create-minio-buckets
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow Database..."
+	@docker-compose up -d airflow-db
 	@echo -e "$(BLUE)[INFO]$(NC) Building custom Airflow image..."
 	@docker build -f stack/airflow/Dockerfile -t banesco-airflow:latest .
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow initialization..."
 	@docker-compose up -d airflow-init
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow services..."
 	@docker-compose up -d airflow-scheduler airflow-webserver
-	@echo -e "$(BLUE)[INFO]$(NC) Creating MinIO buckets..."
-	@$(MAKE) create-minio-buckets
-	@echo -e "$(BLUE)[INFO]$(NC) Setting up Airflow variables..."
-	@$(MAKE) setup-vars
-	@echo -e "$(BLUE)[INFO]$(NC) Setting up PostgreSQL connection..."
-	@$(MAKE) setup-postgres-connection
-	@echo -e "$(BLUE)[INFO]$(NC) Setting up Spark connection..."
-	@$(MAKE) setup-spark-connection
-	@echo -e "$(BLUE)[INFO]$(NC) Starting Streamlit dashboard..."
-	@$(MAKE) start-streamlit
+	@echo -e "$(BLUE)[INFO]$(NC) Setting up Airflow configuration..."
+	@docker cp setup_parameters/setup_complete.py banesco_airflow_scheduler:/tmp/setup_complete.py
+	@docker exec banesco_airflow_scheduler python /tmp/setup_complete.py
 	@echo ""
 	@echo "=========================================="
 	@echo -e "$(GREEN)[SUCCESS]$(NC) 🎉 Setup completed successfully!"
@@ -125,14 +122,16 @@ start-stack: check-docker create-dirs
 	@echo "==============================="
 	@echo -e "$(BLUE)[INFO]$(NC) Starting PostgreSQL..."
 	@docker-compose up -d postgres
-	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow Database..."
-	@docker-compose up -d airflow-db
 	@echo -e "$(BLUE)[INFO]$(NC) Starting MinIO..."
 	@docker-compose up -d minio
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Spark Master..."
 	@docker-compose up -d spark-master
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Spark Worker..."
 	@docker-compose up -d spark-worker
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Streamlit dashboard..."
+	@$(MAKE) start-streamlit
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow Database..."
+	@docker-compose up -d airflow-db
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow initialization..."
 	@docker-compose --profile init up -d airflow-init
 	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow services..."

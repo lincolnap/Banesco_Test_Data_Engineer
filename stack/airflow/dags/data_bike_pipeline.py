@@ -82,6 +82,7 @@ extract_task = SparkSubmitOperator(
     application='/opt/airflow/scripts/divvy_bikes_extract.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
+    jars='/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar',
     conf={
         'spark.sql.adaptive.enabled': 'true',
         'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
@@ -111,6 +112,7 @@ transform_task = SparkSubmitOperator(
     application='/opt/airflow/scripts/divvy_bikes_transformation.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
+    jars='/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar',
     conf={
         'spark.sql.adaptive.enabled': 'true',
         'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
@@ -200,6 +202,7 @@ load_to_postgres_task = SparkSubmitOperator(
     application='/opt/airflow/scripts/divvy_bikes_load_to_postgres.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.6.0',
+    jars='/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar',
     conf={
         'spark.sql.adaptive.enabled': 'true',
         'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',

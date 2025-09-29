@@ -1,69 +1,101 @@
 #!/usr/bin/env python3
 """
 Complete Airflow Setup Script
-Executes all necessary setup scripts for the Divvy Bikes pipeline
+Sets up Airflow variables and connections directly via database
 """
 
-import subprocess
 import sys
 import time
 import os
 
-def wait_for_airflow_ready(max_retries=60, delay=5):
-    """Wait for Airflow webserver to be ready"""
-    print("⏳ Waiting for Airflow webserver to be ready...")
-    
-    for attempt in range(max_retries):
-        try:
-            import requests
-            response = requests.get("http://localhost:8080/health", timeout=5)
-            if response.status_code == 200:
-                print("✅ Airflow webserver is ready!")
-                return True
-        except Exception:
-            pass
-        
-        if attempt < max_retries - 1:
-            print(f"⏳ Attempt {attempt + 1}/{max_retries} - Airflow not ready yet, waiting {delay}s...")
-            time.sleep(delay)
-        else:
-            print(f"❌ Airflow not ready after {max_retries} attempts")
-            return False
-    
-    return False
-
-def run_setup_script(script_name, description):
-    """Run a setup script and handle errors"""
-    print(f"\n🚀 {description}")
-    print("=" * 50)
+def setup_variables():
+    """Setup Airflow variables directly via database"""
+    print("🔧 Setting up Airflow Variables...")
     
     try:
-        result = subprocess.run([
-            sys.executable, 
-            f"/opt/airflow/setup_parameters/{script_name}"
-        ], capture_output=True, text=True, timeout=300)
+        from airflow.models import Variable
+        from airflow.utils.db import create_session
         
-        if result.returncode == 0:
-            print(f"✅ {description} completed successfully!")
-            if result.stdout:
-                print("Output:")
-                print(result.stdout)
-            return True
-        else:
-            print(f"❌ {description} failed!")
-            if result.stderr:
-                print("Error:")
-                print(result.stderr)
-            if result.stdout:
-                print("Output:")
-                print(result.stdout)
-            return False
-            
-    except subprocess.TimeoutExpired:
-        print(f"❌ {description} timed out after 5 minutes!")
-        return False
+        variables = {
+            "YearMon": "202304",
+            "MINIO_ENDPOINT": "minio:9000",
+            "MINIO_ACCESS_KEY": "minioadmin",
+            "MINIO_SECRET_KEY": "minioadmin123",
+            "SPARK_MASTER_URL": "spark://spark-master:7077",
+            "POSTGRES_HOST": "postgres",
+            "POSTGRES_PORT": "5432",
+            "POSTGRES_DB": "banesco_test",
+            "POSTGRES_USER": "postgres",
+            "POSTGRES_PASSWORD": "postgres123",
+            "SCRIPT_BUCKET": "banesco-pa-data-artifact",
+            "OUTPUT_BUCKET": "banesco-pa-data-raw-zone",
+            "DIVVY_BASE_URL": "https://divvy-tripdata.s3.amazonaws.com"
+        }
+        
+        with create_session() as session:
+            for key, value in variables.items():
+                # Check if variable exists
+                existing = session.query(Variable).filter(Variable.key == key).first()
+                if existing:
+                    existing.set_val(value)
+                    print(f"  ✅ Updated variable: {key}")
+                else:
+                    new_var = Variable(key=key, val=value)
+                    session.add(new_var)
+                    print(f"  ✅ Created variable: {key}")
+            session.commit()
+        print("✅ All variables set successfully!")
+        return True
     except Exception as e:
-        print(f"❌ Error running {description}: {str(e)}")
+        print(f"❌ Error setting variables: {str(e)}")
+        return False
+
+def setup_connections():
+    """Setup Airflow connections directly via database"""
+    print("🔧 Setting up Airflow Connections...")
+    
+    try:
+        from airflow.models import Connection
+        from airflow.utils.db import create_session
+        
+        connections = [
+            {
+                "conn_id": "postgres_default",
+                "conn_type": "postgres",
+                "host": "postgres",
+                "port": 5432,
+                "schema": "banesco_test",
+                "login": "postgres",
+                "password": "postgres123"
+            },
+            {
+                "conn_id": "spark_default",
+                "conn_type": "spark",
+                "host": "spark-master",
+                "port": 7077,
+                "extra": '{"queue": "default", "deploy-mode": "client", "spark-master": "spark://spark-master:7077"}'
+            }
+        ]
+        
+        with create_session() as session:
+            for conn_data in connections:
+                # Check if connection exists
+                existing = session.query(Connection).filter(Connection.conn_id == conn_data["conn_id"]).first()
+                if existing:
+                    # Update existing connection
+                    for key, value in conn_data.items():
+                        setattr(existing, key, value)
+                    print(f"  ✅ Updated connection: {conn_data['conn_id']}")
+                else:
+                    # Create new connection
+                    new_conn = Connection(**conn_data)
+                    session.add(new_conn)
+                    print(f"  ✅ Created connection: {conn_data['conn_id']}")
+            session.commit()
+        print("✅ All connections set successfully!")
+        return True
+    except Exception as e:
+        print(f"❌ Error setting connections: {str(e)}")
         return False
 
 def main():
@@ -71,42 +103,37 @@ def main():
     print("🎯 Complete Airflow Setup for Divvy Bikes Pipeline")
     print("=" * 60)
     
-    # Wait for Airflow to be ready
-    if not wait_for_airflow_ready():
-        print("❌ Airflow is not available. Exiting...")
-        sys.exit(1)
+    # Wait a bit for Airflow database to be ready
+    print("⏳ Waiting for Airflow database to be ready...")
+    time.sleep(10)
     
-    # List of setup scripts to run
-    setup_scripts = [
-        ("setup_airflow_variables.py", "Setting up Airflow Variables"),
-        ("setup_spark_connection.py", "Setting up Spark Connection"),
-        ("setup_postgres_connection.py", "Setting up PostgreSQL Connection")
-    ]
+    success = True
     
-    success_count = 0
-    total_scripts = len(setup_scripts)
+    # Setup variables
+    print("\n🚀 Setting up Airflow Variables")
+    print("=" * 50)
+    if not setup_variables():
+        success = False
     
-    # Run each setup script
-    for script_name, description in setup_scripts:
-        if run_setup_script(script_name, description):
-            success_count += 1
-        else:
-            print(f"⚠️ Continuing with other scripts despite {description} failure...")
+    # Setup connections
+    print("\n🚀 Setting up Airflow Connections")
+    print("=" * 50)
+    if not setup_connections():
+        success = False
     
     # Summary
     print(f"\n📊 Setup Summary")
     print("=" * 30)
-    print(f"✅ Successful: {success_count}/{total_scripts}")
-    print(f"❌ Failed: {total_scripts - success_count}/{total_scripts}")
     
-    if success_count == total_scripts:
-        print("\n🎉 All setup scripts completed successfully!")
-        print("🚀 Airflow is ready for the Divvy Bikes pipeline!")
-        sys.exit(0)
+    if success:
+        print("✅ All configurations completed successfully!")
+        print("🎉 Airflow is ready for the Divvy Bikes pipeline!")
+        print("🚀 All services are ready!")
     else:
-        print(f"\n⚠️ {total_scripts - success_count} setup script(s) failed!")
-        print("🔧 Please check the logs above for details.")
-        sys.exit(1)
+        print("⚠️ Setup completed with some errors")
+        print("🔧 Check the logs above for details")
+    
+    return 0 if success else 1
 
 if __name__ == "__main__":
     main()
