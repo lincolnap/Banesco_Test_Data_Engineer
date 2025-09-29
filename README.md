@@ -1,411 +1,286 @@
-# 🏦 Banesco Data Engineering Stack
+# 🚀 Banesco Data Engineering Stack
 
-A comprehensive data engineering stack for Banesco, including PostgreSQL, MongoDB, Kafka, MinIO, Apache Airflow, Apache Spark, and Streamlit dashboard.
+Sistema de procesamiento de datos para análisis de bicicletas Divvy con Apache Airflow, Spark, PostgreSQL y MinIO.
 
-## 📋 Table of Contents
+## 📋 Tabla de Contenidos
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Services](#services)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-- [Contributing](#contributing)
-- [License](#license)
+- [Requisitos Previos](#-requisitos-previos)
+- [Configuración del Entorno](#-configuración-del-entorno)
+- [Levantar el Stack](#-levantar-el-stack)
+- [Ejecutar la Solución](#-ejecutar-la-solución)
+- [Servicios Disponibles](#-servicios-disponibles)
+- [Solución de Problemas](#-solución-de-problemas)
 
-## 🎯 Overview
+## 🔧 Requisitos Previos
 
-This project provides a complete data engineering infrastructure using Docker containers, orchestrated with Docker Compose. The stack includes:
+Antes de comenzar, asegúrate de tener instalado:
 
-- **PostgreSQL 16**: Primary relational database
-- **MongoDB 7**: Document database
-- **Apache Kafka + Zookeeper**: Message streaming platform
-- **MinIO**: S3-compatible object storage
-- **Apache Airflow 2.9**: Workflow orchestration
-- **Apache Spark 3.5**: Big data processing
-- **Streamlit**: Interactive dashboard and monitoring
+- **Docker** (versión 20.10 o superior)
+- **Docker Compose** (versión 2.0 o superior)
+- **Make** (para usar los comandos del Makefile)
+- **Git** (para clonar el repositorio)
 
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Streamlit     │    │    Airflow      │    │      Spark      │
-│   Dashboard     │    │   Scheduler     │    │     Master      │
-│   Port: 8501    │    │   Port: 8080    │    │   Port: 8081    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │   banesco_test  │
-                    │     Network     │
-                    └─────────────────┘
-                                 │
-    ┌─────────────┬─────────────┬─────────────┬─────────────┐
-    │ PostgreSQL  │   MongoDB   │    Kafka    │    MinIO    │
-    │ Port: 5432  │ Port: 27017 │ Port: 9092  │ Port: 9000  │
-    └─────────────┴─────────────┴─────────────┴─────────────┘
-```
-
-## 🔧 Prerequisites
-
-Before running this stack, ensure you have the following installed:
-
-- **Docker** (version 20.10 or higher)
-- **Docker Compose** (version 2.0 or higher)
-- **Make** (for convenient commands)
-- **Git** (for version control)
-
-### Verify Installation
+### Verificar Instalación
 
 ```bash
+# Verificar Docker
 docker --version
-docker compose version
+docker-compose --version
+
+# Verificar Make
 make --version
 ```
 
-## 🚀 Quick Start
+## ⚙️ Configuración del Entorno
 
-### Option 1: Complete Pipeline Setup (Recommended)
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd Banaesco_test_dataengineer
-   ```
-
-2. **Start the Divvy Bikes Pipeline**
-   ```bash
-   make start
-   ```
-
-3. **Access the services**
-   - 🔧 **Airflow UI**: http://localhost:8080 (admin/admin)
-   - 📈 **Spark Master**: http://localhost:8081
-   - 💾 **MinIO Console**: http://localhost:9001 (minioadmin/minioadmin123)
-   - 📊 **Dashboard**: http://localhost:8501
-
-### Option 2: Basic Stack Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd Banaesco_test_dataengineer
-   ```
-
-2. **Start the stack**
-   ```bash
-   make start-stack
-   ```
-
-3. **Access the services**
-   - 📊 **Dashboard**: http://localhost:8501
-   - 🔧 **Airflow UI**: http://localhost:8080 (admin/admin)
-   - 📈 **Spark Master**: http://localhost:8081
-   - 💾 **MinIO Console**: http://localhost:9001 (minioadmin/minioadmin123)
-
-## 🔧 Services
-
-### PostgreSQL
-- **Purpose**: Primary relational database for Airflow metadata and application data
-- **Port**: 5432
-- **Default Credentials**: postgres/postgres123
-- **Databases**: airflow_db, banesco_analytics, banesco_warehouse
-
-### MongoDB
-- **Purpose**: Document database for flexible data storage
-- **Port**: 27017
-- **Default Credentials**: admin/admin123
-- **Database**: banesco_test
-
-### Apache Kafka
-- **Purpose**: Real-time data streaming and event processing
-- **Port**: 9092
-- **Dependencies**: Zookeeper (port 2181)
-- **Features**: Auto-topic creation enabled
-
-### MinIO
-- **Purpose**: S3-compatible object storage for data lakes
-- **Ports**: 9000 (API), 9001 (Console)
-- **Default Credentials**: minioadmin/minioadmin123
-
-### Apache Airflow
-- **Purpose**: Workflow orchestration and data pipeline management
-- **Port**: 8080
-- **Default Credentials**: admin/admin
-- **Executor**: LocalExecutor
-- **Database**: PostgreSQL
-
-### Apache Spark
-- **Purpose**: Big data processing and analytics
-- **Master Port**: 7077, Web UI: 8081
-- **Worker Port**: 8082
-- **Mode**: Standalone cluster
-
-### Streamlit
-- **Purpose**: Interactive dashboard and monitoring
-- **Port**: 8501
-- **Features**: Real-time metrics, service monitoring, data connectors
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Each service has its own `.env` file in the `stack/<service>/` directory. Copy the `.env.example` files and modify as needed:
+### 1. Clonar el Repositorio
 
 ```bash
-# Example for PostgreSQL
-cp stack/postgres/.env.example stack/postgres/.env
-# Edit the .env file with your preferred settings
+git clone <url-del-repositorio>
+cd Banesco_Test_Data_Engineer
 ```
 
-### Custom Configuration
+### 2. Verificar Docker
 
-- **PostgreSQL**: Modify `stack/postgres/init/` for custom initialization scripts
-- **Airflow**: Add DAGs to `stack/airflow/dags/`
-- **Streamlit**: Customize `stack/streamlit/app/app.py`
-- **Spark**: Add configuration files to `stack/spark/config/`
+Asegúrate de que Docker esté ejecutándose:
 
-## 📖 Usage
-
-### Make Commands
-
-The project includes a comprehensive Makefile with the following commands:
-
-#### Basic Operations
 ```bash
-make start       # Start the complete pipeline (recommended)
-make start-stack # Start only the stack (without full setup)
-make stop        # Stop all services
-make restart     # Restart all services
-make build       # Build custom Airflow image
-make clean       # Clean up containers and volumes
+docker info
 ```
 
-#### Pipeline Management
+Si no está ejecutándose, inicia Docker Desktop.
+
+### 3. Configurar Variables de Entorno (Opcional)
+
+El sistema funciona con valores por defecto, pero puedes personalizar:
+
 ```bash
-make deploy      # Deploy scripts to MinIO
-make setup-vars  # Setup Airflow variables
-make setup-conns # Setup Airflow connections
-make test        # Run integration tests
-make test-minio  # Test MinIO access
+# Crear archivo .env (opcional)
+cp .env.example .env
+# Editar las variables según necesites
 ```
 
-#### Monitoring and Debugging
+## 🚀 Levantar el Stack
+
+### Opción 1: Stack Completo (Recomendado)
+
 ```bash
-make status      # Check status of all services
-make logs        # View logs from all services
-make urls        # Show all service URLs
+make start
 ```
 
-#### Quick Setup
+Este comando:
+- ✅ Levanta todos los servicios (PostgreSQL, MinIO, Spark, Airflow, Streamlit)
+- ✅ Configura automáticamente las variables y conexiones
+- ✅ Crea los buckets necesarios en MinIO
+- ✅ Inicia el dashboard de Streamlit
+
+### Opción 2: Stack Básico
+
 ```bash
-make quick-setup # Build + start + deploy (complete setup)
-make help        # Show all available commands
+make start-stack
 ```
 
-### Manual Docker Compose Commands
+Solo levanta los servicios sin configuración automática.
 
-If you prefer using Docker Compose directly:
-
-```bash
-# Start services
-docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Stop services
-docker compose down
-
-# Scale services
-docker compose up -d --scale spark-worker=3
-```
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-#### Port Conflicts
-If you encounter port conflicts, check which services are using the ports:
+### Verificar que Todo Funciona
 
 ```bash
-# Check port usage
-lsof -i :5432  # PostgreSQL
-lsof -i :9092  # Kafka
-lsof -i :8080  # Airflow
-```
-
-#### Permission Issues
-If you encounter permission issues with volumes:
-
-```bash
-# Fix ownership (Linux/macOS)
-sudo chown -R $USER:$USER stack/
-```
-
-#### Service Health Issues
-Check service health and logs:
-
-```bash
-make health
-make logs-svc svc=<service_name>
-```
-
-#### Kafka Connection Issues
-If external clients can't connect to Kafka:
-
-1. Check the `KAFKA_ADVERTISED_LISTENERS` in `stack/kafka/.env`
-2. Ensure the advertised listener matches your client's connection string
-3. For local connections, use `localhost:9092`
-
-#### Airflow Initialization Issues
-If Airflow fails to start:
-
-1. Ensure PostgreSQL is healthy: `make logs-svc svc=postgres`
-2. Initialize Airflow database: `make init`
-3. Check Airflow logs: `make logs-svc svc=airflow-webserver`
-
-### Reset Everything
-To start completely fresh (⚠️ **This will delete all data**):
-
-```bash
-make recreate
-```
-
-## 🛠️ Development
-
-### Adding New Services
-
-1. Create service directory: `mkdir -p stack/new-service`
-2. Add `.env.example` and `.env` files
-3. Update `docker-compose.yml`
-4. Add Makefile targets if needed
-
-### Custom DAGs
-
-Add your Airflow DAGs to `stack/airflow/dags/`. The project includes:
-
-#### Divvy Bikes Pipeline (`data_bike_pipeline.py`)
-- **Extract**: Downloads Divvy Bikes data using Spark
-- **Transform**: Data processing and quality checks
-- **Load**: Saves data to MinIO in Parquet format
-- **Report**: Generates analytics and summaries
-- **Cleanup**: Removes temporary files
-
-#### Example DAG (`example_dag.py`)
-- Basic data extraction
-- Transformation
-- Loading to PostgreSQL
-- Report generation
-
-### Pipeline Management
-
-The Divvy Bikes pipeline includes comprehensive management tools:
-
-```bash
-# Check pipeline status
+# Ver estado de todos los contenedores
 make status
 
-# Deploy scripts to MinIO
-make deploy
-
-# Run integration tests
-make test
-
-# Setup Airflow connections
-make setup-conns
-```
-
-### Extending Streamlit Dashboard
-
-Modify `stack/streamlit/app/app.py` to add:
-- New data sources
-- Custom visualizations
-- Additional monitoring features
-
-### Backup and Restore
-
-```bash
-# Backup PostgreSQL
-make backup-postgres
-
-# Backup MongoDB
-make backup-mongodb
-```
-
-## 📊 Monitoring
-
-### Health Checks
-
-All services include health checks. Monitor them with:
-
-```bash
-make health
-```
-
-### Logs
-
-View logs for debugging:
-
-```bash
-# All services
+# Ver logs si hay problemas
 make logs
-
-# Specific service
-make logs-svc svc=postgres
 ```
 
-### Metrics
+## 🎯 Ejecutar la Solución
 
-Access service-specific monitoring:
-- **Airflow**: Built-in metrics in the UI
-- **Spark**: Master and Worker UIs
-- **Streamlit**: Custom dashboard with system metrics
+### 1. Acceder a Airflow
 
-## 🤝 Contributing
+1. Abre tu navegador en: **http://localhost:8080**
+2. Usuario: `admin`
+3. Contraseña: `admin`
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/new-feature`
-3. Make your changes
-4. Test thoroughly: `make up && make health`
-5. Commit your changes: `git commit -m "Add new feature"`
-6. Push to the branch: `git push origin feature/new-feature`
-7. Submit a pull request
+### 2. Ejecutar el Pipeline
 
-### Development Guidelines
+1. **Encontrar el DAG**: Busca `data_bike_pipeline` en la lista de DAGs
+2. **Habilitar el DAG**: Haz clic en el toggle para activarlo
+3. **Ejecutar**: Haz clic en el botón "Trigger DAG" (▶️)
+4. **Monitorear**: Ve el progreso en tiempo real
 
-- Follow PEP8 style guidelines for Python code
-- Add comments in English
-- Update documentation for new features
-- Test all changes before submitting
+### 3. Verificar los Resultados
 
-## 📄 License
+El pipeline procesa datos de bicicletas Divvy y los guarda en:
+- **MinIO**: Datos en formato Parquet
+- **PostgreSQL**: Datos procesados para análisis
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## 🌐 Servicios Disponibles
 
-## 🆘 Support
+| Servicio | URL | Usuario/Contraseña | Descripción |
+|----------|-----|-------------------|-------------|
+| **Airflow** | http://localhost:8080 | admin/admin | Orquestación de tareas |
+| **Streamlit** | http://localhost:8501 | - | Dashboard de visualización |
+| **Spark Master** | http://localhost:8081 | - | Interfaz de Spark |
+| **MinIO** | http://localhost:9001 | minioadmin/minioadmin123 | Almacenamiento de objetos |
+| **PostgreSQL** | localhost:5433 | postgres/postgres123 | Base de datos |
 
-For issues and questions:
+### Acceso Rápido
 
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review service logs: `make logs`
-3. Check service health: `make health`
-4. Create an issue in the repository
+```bash
+# Abrir todos los servicios
+make urls
+```
 
-## 🏷️ Version Information
+## 🔍 Monitoreo y Logs
 
-- **Docker Compose**: 3.8
-- **PostgreSQL**: 16-alpine
-- **MongoDB**: 7
-- **Apache Kafka**: Latest (Bitnami)
-- **Apache Airflow**: 2.9.3
-- **Apache Spark**: 3.5
-- **Streamlit**: 1.29.0
+### Ver Logs de un Servicio Específico
+
+```bash
+# Logs de Airflow
+docker logs banesco_airflow_scheduler
+
+# Logs de Spark
+docker logs banesco_spark_master
+
+# Logs de MinIO
+docker logs banesco_minio
+```
+
+### Ver Estado del Sistema
+
+```bash
+# Estado de todos los contenedores
+make status
+
+# Logs en tiempo real
+make logs
+```
+
+## 🛠️ Comandos Útiles
+
+### Gestión del Stack
+
+```bash
+# Iniciar todo
+make start
+
+# Parar todo
+make stop
+
+# Reiniciar todo
+make restart
+
+# Ver estado
+make status
+```
+
+### Desarrollo
+
+```bash
+# Construir imagen de Airflow
+make build
+
+# Limpiar contenedores
+make clean
+
+# Limpiar TODO (incluyendo datos)
+make clean-all
+```
+
+### Configuración
+
+```bash
+# Configurar variables de Airflow
+make setup-vars
+
+# Configurar conexión PostgreSQL
+make setup-postgres-connection
+
+# Configurar conexión Spark
+make setup-spark-connection
+```
+
+## 🚨 Solución de Problemas
+
+### Problema: "Docker no está ejecutándose"
+
+**Solución:**
+```bash
+# Iniciar Docker Desktop
+# O en Linux:
+sudo systemctl start docker
+```
+
+### Problema: "Puerto ya en uso"
+
+**Solución:**
+```bash
+# Ver qué está usando el puerto
+lsof -i :8080
+
+# Parar el proceso o cambiar puerto en docker-compose.yml
+```
+
+### Problema: "Airflow no responde"
+
+**Solución:**
+```bash
+# Reiniciar Airflow
+docker-compose restart airflow-scheduler airflow-webserver
+
+# Verificar logs
+docker logs banesco_airflow_scheduler
+```
+
+### Problema: "Error de conexión a base de datos"
+
+**Solución:**
+```bash
+# Reconfigurar conexiones
+make setup-postgres-connection
+
+# Verificar que PostgreSQL esté corriendo
+docker ps | grep postgres
+```
+
+### Problema: "Spark no funciona"
+
+**Solución:**
+```bash
+# Verificar que Spark esté corriendo
+docker ps | grep spark
+
+# Reiniciar Spark
+docker-compose restart spark-master spark-worker
+```
+
+## 📊 Flujo de Datos
+
+```
+1. 📥 Extracción: Datos de Divvy Bikes → MinIO (Raw Zone)
+2. 🔄 Transformación: Procesamiento con Spark → MinIO (Stage Zone)  
+3. 🗄️ Carga: Datos finales → PostgreSQL (Analytics)
+4. 📊 Visualización: Dashboard en Streamlit
+```
+
+## 🆘 Obtener Ayuda
+
+Si tienes problemas:
+
+1. **Revisa los logs**: `make logs`
+2. **Verifica el estado**: `make status`
+3. **Consulta la documentación técnica**: `README_INFRASTRUCTURE.md`
+4. **Reinicia el stack**: `make restart`
+
+## 🎉 ¡Listo!
+
+Tu stack de Data Engineering está funcionando. Ahora puedes:
+
+- ✅ Ejecutar pipelines de datos en Airflow
+- ✅ Visualizar datos en Streamlit
+- ✅ Monitorear el procesamiento en Spark
+- ✅ Gestionar archivos en MinIO
+- ✅ Consultar datos en PostgreSQL
 
 ---
 
-**Built with ❤️ for Banesco Data Engineering Team**
+**¿Necesitas más detalles técnicos?** Consulta `README_INFRASTRUCTURE.md` para información avanzada sobre la arquitectura y configuración.
