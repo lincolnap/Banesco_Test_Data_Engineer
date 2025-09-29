@@ -64,6 +64,36 @@ extract_task = SparkSubmitOperator(
     ],
     dag=dag,
 )
+
+# Task 2: Transform Divvy Bikes data using Spark
+transform_task = SparkSubmitOperator(
+    task_id='transform_data',
+    application='/opt/airflow/scripts/divvy_bikes_transformation.py',
+    conn_id='spark_default',
+    packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
+    conf={
+        'spark.sql.adaptive.enabled': 'true',
+        'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
+        'spark.driver.memory': '2g',
+        'spark.executor.memory': '2g',
+        'spark.executor.cores': '2',
+        'spark.executor.instances': '2',
+        'spark.hadoop.fs.s3a.impl': 'org.apache.hadoop.fs.s3a.S3AFileSystem',
+        'spark.hadoop.fs.s3a.path.style.access': 'true',
+        'spark.hadoop.fs.s3a.connection.ssl.enabled': 'false',
+        'spark.hadoop.fs.s3a.aws.credentials.provider': 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider'
+    },
+    application_args=[
+        '--year-month', '{{ var.value.YearMon }}',
+        '--minio-endpoint', '{{ var.value.MINIO_ENDPOINT }}',
+        '--minio-access-key', '{{ var.value.MINIO_ACCESS_KEY }}',
+        '--minio-secret-key', '{{ var.value.MINIO_SECRET_KEY }}',
+        '--spark-master', 'spark://spark-master:7077',
+        '--input-bucket', 'banesco-pa-data-raw-zone',
+        '--output-bucket', 'banesco-pa-data-stage-zone'
+    ],
+    dag=dag,
+)
 #else:
 #    # Fallback to BashOperator if SparkSubmitOperator is not available
 #    extract_task = BashOperator(
@@ -161,4 +191,4 @@ extract_task = SparkSubmitOperator(
 #)
 #
 # Define task dependencies
-extract_task #>> transform_task >> load_to_postgres >> report_task >> cleanup_task
+extract_task >> transform_task

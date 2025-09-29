@@ -14,6 +14,9 @@ def setup_airflow_variables():
     
     # Define all variables with their default values
     variables = {
+        # Data Processing Configuration
+        'YearMon': '202304',  # Year and month in YYYYMM format for data processing
+        
         # Spark Configuration
         'SPARK_MASTER_URL': 'spark://spark-master:7077',
         
@@ -91,7 +94,7 @@ def verify_variables():
     print("=" * 40)
     
     required_vars = [
-        'SPARK_MASTER_URL', 'MINIO_ENDPOINT', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY',
+        'YearMon', 'SPARK_MASTER_URL', 'MINIO_ENDPOINT', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY',
         'POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD',
         'MONGO_HOST', 'MONGO_PORT', 'MONGO_DB', 'MONGO_USER', 'MONGO_PASSWORD',
         'KAFKA_BOOTSTRAP_SERVERS'

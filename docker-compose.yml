@@ -101,6 +101,7 @@ services:
       - airflow_dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
+      - airflow_scripts:/opt/airflow/scripts
     networks:
       - banesco_test
     depends_on:
@@ -140,6 +141,7 @@ services:
       - airflow_dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
+      - airflow_scripts:/opt/airflow/scripts
     networks:
       - banesco_test
     depends_on:
@@ -180,6 +182,7 @@ services:
       - airflow_dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - airflow_plugins:/opt/airflow/plugins
+      - airflow_scripts:/opt/airflow/scripts
     ports:
       - "8080:8080"
     networks:
@@ -315,6 +318,12 @@ volumes:
       type: none
       o: bind
       device: ./stack/airflow/plugins
+  airflow_scripts:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./stack/airflow/scripts
   spark_data:
     driver: local
     driver_opts:
