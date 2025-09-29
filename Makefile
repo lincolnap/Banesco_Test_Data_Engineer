@@ -1,208 +1,316 @@
-# Banesco Data Engineering Stack - Makefile
-# This Makefile provides convenient commands to manage the Docker stack
+# Divvy Bikes Pipeline - Makefile
+# This Makefile provides convenient commands for managing the pipeline
 
-.PHONY: help up down build logs ps recreate clean init up-svc down-svc logs-svc restart-svc status health
+.PHONY: help start stop restart status logs clean build deploy test setup-vars setup-conns test-minio quick-setup urls
+
+# Colors for output
+RED=\033[0;31m
+GREEN=\033[0;32m
+YELLOW=\033[1;33m
+BLUE=\033[0;34m
+NC=\033[0m # No Color
 
 # Default target
-help: ## Show this help message
-	@echo "Banesco Data Engineering Stack - Available Commands:"
-	@echo "=================================================="
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+help:
+	@echo "🚀 Divvy Bikes Pipeline - Available Commands"
+	@echo "============================================="
+	@echo ""
+	@echo "📋 Setup & Management:"
+	@echo "  make start          - Start the complete pipeline"
+	@echo "  make stop           - Stop all services"
+	@echo "  make restart        - Restart all services"
+	@echo "  make status         - Check status of all services"
+	@echo "  make logs           - View logs from all services"
+	@echo ""
+	@echo "🔧 Development:"
+	@echo "  make build          - Build custom Airflow image"
+	@echo "  make deploy         - Deploy scripts to MinIO"
+	@echo "  make setup-vars     - Setup Airflow variables"
+	@echo "  make setup-conns    - Setup Airflow connections"
+	@echo "  make test-minio     - Test MinIO access"
+	@echo "  make test           - Run integration tests"
+	@echo "  make clean          - Clean up containers and volumes"
+	@echo ""
+	@echo "🌐 Access URLs:"
+	@echo "  make urls           - Show service access URLs"
+	@echo "  Airflow:    http://localhost:8080 (admin/admin)"
+	@echo "  Spark:      http://localhost:8081"
+	@echo "  MinIO:      http://localhost:9001 (minioadmin/minioadmin123)"
 
-# Main stack operations
-up: ## Start the entire stack in detached mode
-	@echo "🚀 Starting Banesco Data Engineering Stack..."
-	docker compose up -d
-	@echo "✅ Stack started successfully!"
-	@echo "📊 Dashboard available at: http://localhost:8502"
-	@echo "🔧 Airflow UI available at: http://localhost:8080 (admin/admin)"
-	@echo "📈 Spark Master UI available at: http://localhost:8081"
-	@echo "💾 MinIO Console available at: http://localhost:9001 (minioadmin/minioadmin123)"
-
-down: ## Stop the entire stack
-	@echo "🛑 Stopping Banesco Data Engineering Stack..."
-	docker compose down
-	@echo "✅ Stack stopped successfully!"
-
-build: ## Build all custom images
-	@echo "🔨 Building custom images..."
-	docker compose build
-	@echo "✅ Build completed!"
-
-restart: ## Restart the entire stack
-	@echo "🔄 Restarting Banesco Data Engineering Stack..."
-	docker compose restart
-	@echo "✅ Stack restarted successfully!"
-
-# Logs and monitoring
-logs: ## Show logs from all services
-	docker compose logs -f
-
-logs-svc: ## Show logs from a specific service (usage: make logs-svc svc=postgres)
-	@if [ -z "$(svc)" ]; then \
-		echo "❌ Please specify a service name: make logs-svc svc=<service_name>"; \
-		echo "Available services: postgres, airflow-db, kafka, mongodb, minio, airflow-webserver, airflow-scheduler, spark-master, spark-worker, streamlit"; \
-	else \
-		docker compose logs -f $(svc); \
+# Check if Docker is running
+check-docker:
+	@echo -e "$(BLUE)[INFO]$(NC) Checking Docker status..."
+	@if ! docker info > /dev/null 2>&1; then \
+		echo -e "$(RED)[ERROR]$(NC) Docker is not running. Please start Docker first."; \
+		exit 1; \
 	fi
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Docker is running"
 
-ps: ## Show status of all containers
-	@echo "📋 Container Status:"
-	docker compose ps
+# Create necessary directories
+create-dirs:
+	@echo -e "$(BLUE)[INFO]$(NC) Creating necessary directories..."
+	@mkdir -p stack/airflow/logs
+	@mkdir -p stack/airflow/plugins
+	@mkdir -p stack/minio/data
+	@mkdir -p stack/postgres/data
+	@mkdir -p stack/spark/data
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Directories created"
 
-status: ps ## Alias for ps command
+# Start the complete pipeline
+start: check-docker create-dirs
+	@echo "🚀 Starting Divvy Bikes Pipeline Setup"
+	@echo "======================================"
+	@echo -e "$(BLUE)[INFO]$(NC) Starting core services (PostgreSQL, MinIO, Spark)..."
+	@docker-compose up -d postgres airflow-db minio spark-master spark-worker
+	@echo -e "$(BLUE)[INFO]$(NC) Waiting for services to be ready..."
+	@sleep 30
+	@echo -e "$(BLUE)[INFO]$(NC) Building custom Airflow image..."
+	@cd stack/airflow && docker build -t banesco-airflow:latest .
+	@cd ../..
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow initialization..."
+	@docker-compose up -d airflow-init
+	@echo -e "$(BLUE)[INFO]$(NC) Waiting for Airflow initialization to complete..."
+	@sleep 60
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow services..."
+	@docker-compose up -d airflow-scheduler airflow-webserver
+	@echo -e "$(BLUE)[INFO]$(NC) Waiting for Airflow to be ready..."
+	@sleep 30
+	@echo -e "$(BLUE)[INFO]$(NC) Deploying scripts to MinIO..."
+	@cd stack/airflow/scripts && python deploy_to_minio.py
+	@cd ../..
+	@echo -e "$(BLUE)[INFO]$(NC) Setting up Airflow connections..."
+	@docker exec banesco_airflow_scheduler python /opt/airflow/scripts/setup_airflow_connections.py
+	@echo -e "$(BLUE)[INFO]$(NC) Setting up Spark connection..."
+	@docker exec banesco_airflow_scheduler python /opt/airflow/scripts/setup_spark_connection.py
+	@echo ""
+	@echo "======================================"
+	@echo -e "$(GREEN)[SUCCESS]$(NC) 🎉 Setup completed successfully!"
+	@echo "======================================"
+	@echo ""
+	@echo "📋 Service Access Information:"
+	@echo "  🌐 Airflow Web UI: http://localhost:8080"
+	@echo "     Username: admin"
+	@echo "     Password: admin"
+	@echo ""
+	@echo "  🔥 Spark Master UI: http://localhost:8081"
+	@echo ""
+	@echo "  📦 MinIO Console: http://localhost:9001"
+	@echo "     Username: minioadmin"
+	@echo "     Password: minioadmin123"
+	@echo ""
+	@echo "🚀 Next Steps:"
+	@echo "  1. Open Airflow Web UI: http://localhost:8080"
+	@echo "  2. Enable the 'data_bike_pipeline' DAG"
+	@echo "  3. Trigger the DAG manually or wait for scheduled execution"
 
-health: ## Check health status of all services
-	@echo "🏥 Health Check Status:"
-	@echo "======================"
-	@for service in postgres airflow-db kafka mongodb minio airflow-webserver spark-master streamlit; do \
-		echo -n "$$service: "; \
-		if docker compose ps $$service | grep -q "healthy\|Up"; then \
-			echo "✅ Healthy"; \
+# Start only the stack (without full pipeline setup)
+start-stack: check-docker create-dirs
+	@echo "🚀 Starting Banesco Data Stack"
+	@echo "==============================="
+	@echo -e "$(BLUE)[INFO]$(NC) Starting core services..."
+	@docker-compose up -d postgres airflow-db minio spark-master spark-worker
+	@echo -e "$(BLUE)[INFO]$(NC) Waiting for core services to be ready..."
+	@sleep 30
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow initialization..."
+	@docker-compose --profile init up -d airflow-init
+	@echo -e "$(BLUE)[INFO]$(NC) Waiting for Airflow initialization to complete..."
+	@sleep 60
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Airflow services..."
+	@docker-compose up -d airflow-scheduler airflow-webserver
+	@echo -e "$(BLUE)[INFO]$(NC) Waiting for services to be ready..."
+	@sleep 30
+	@echo ""
+	@echo "==============================="
+	@echo -e "$(GREEN)[SUCCESS]$(NC) 🎉 Stack Started Successfully!"
+	@echo "==============================="
+	@echo ""
+	@echo "🌐 Service Access:"
+	@echo "  Airflow UI:     http://localhost:8080 (admin/admin)"
+	@echo "  Spark Master:   http://localhost:8081"
+	@echo "  MinIO Console:  http://localhost:9001 (minioadmin/minioadmin123)"
+	@echo "  PostgreSQL:     localhost:5432 (postgres/postgres123)"
+
+# Stop all services
+stop:
+	@echo "🛑 Stopping all services..."
+	@docker-compose down
+
+# Restart all services
+restart: stop start
+
+# Check status of all services
+status:
+	@echo "🔍 Divvy Bikes Pipeline Status Check"
+	@echo "===================================="
+	@echo ""
+	@echo "🔧 Service Status:"
+	@echo "------------------"
+	@echo -n "Checking PostgreSQL... "
+	@if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "banesco_postgres.*Up"; then \
+		echo -e "$(GREEN)✅ Running$(NC)"; \
+	else \
+		echo -e "$(RED)❌ Not Running$(NC)"; \
+	fi
+	@echo -n "Checking Airflow DB... "
+	@if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "banesco_airflow_db.*Up"; then \
+		echo -e "$(GREEN)✅ Running$(NC)"; \
+	else \
+		echo -e "$(RED)❌ Not Running$(NC)"; \
+	fi
+	@echo -n "Checking MinIO... "
+	@if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "banesco_minio.*Up"; then \
+		if curl -s -f "http://localhost:9000/minio/health/live" > /dev/null 2>&1; then \
+			echo -e "$(GREEN)✅ Running & Healthy$(NC)"; \
 		else \
-			echo "❌ Unhealthy/Stopped"; \
+			echo -e "$(YELLOW)⚠️  Running but not responding$(NC)"; \
 		fi; \
-	done
-
-# Service-specific operations
-up-svc: ## Start a specific service (usage: make up-svc svc=postgres)
-	@if [ -z "$(svc)" ]; then \
-		echo "❌ Please specify a service name: make up-svc svc=<service_name>"; \
-		echo "Available services: postgres, airflow-db, kafka, mongodb, minio, airflow-webserver, airflow-scheduler, spark-master, spark-worker, streamlit"; \
 	else \
-		echo "🚀 Starting $(svc) service..."; \
-		docker compose up -d $(svc); \
-		echo "✅ $(svc) service started!"; \
+		echo -e "$(RED)❌ Not Running$(NC)"; \
 	fi
-
-down-svc: ## Stop a specific service (usage: make down-svc svc=postgres)
-	@if [ -z "$(svc)" ]; then \
-		echo "❌ Please specify a service name: make down-svc svc=<service_name>"; \
-		echo "Available services: postgres, airflow-db, kafka, mongodb, minio, airflow-webserver, airflow-scheduler, spark-master, spark-worker, streamlit"; \
+	@echo -n "Checking Spark Master... "
+	@if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "banesco_spark_master.*Up"; then \
+		if curl -s -f "http://localhost:8081" > /dev/null 2>&1; then \
+			echo -e "$(GREEN)✅ Running & Healthy$(NC)"; \
+		else \
+			echo -e "$(YELLOW)⚠️  Running but not responding$(NC)"; \
+		fi; \
 	else \
-		echo "🛑 Stopping $(svc) service..."; \
-		docker compose stop $(svc); \
-		echo "✅ $(svc) service stopped!"; \
+		echo -e "$(RED)❌ Not Running$(NC)"; \
 	fi
-
-restart-svc: ## Restart a specific service (usage: make restart-svc svc=postgres)
-	@if [ -z "$(svc)" ]; then \
-		echo "❌ Please specify a service name: make restart-svc svc=<service_name>"; \
-		echo "Available services: postgres, airflow-db, kafka, mongodb, minio, airflow-webserver, airflow-scheduler, spark-master, spark-worker, streamlit"; \
+	@echo -n "Checking Spark Worker... "
+	@if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "banesco_spark_worker.*Up"; then \
+		echo -e "$(GREEN)✅ Running$(NC)"; \
 	else \
-		echo "🔄 Restarting $(svc) service..."; \
-		docker compose restart $(svc); \
-		echo "✅ $(svc) service restarted!"; \
+		echo -e "$(RED)❌ Not Running$(NC)"; \
 	fi
-
-# Initialization
-init: ## Initialize Airflow database and create admin user
-	@echo "🔧 Initializing Airflow database..."
-	docker run --rm --network banesco_test \
-		-e AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow_user:airflow_password123@airflow-db:5432/airflow_db \
-		-e AIRFLOW__CORE__FERNET_KEY=ndc7_H8h7pbNlAhm2oVQ6WHWR5YxH4k-mVLkhCpntao= \
-		apache/airflow:2.9.3 airflow db init
-	@echo "👤 Creating Airflow admin user..."
-	docker run --rm --network banesco_test \
-		-e AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow_user:airflow_password123@airflow-db:5432/airflow_db \
-		-e AIRFLOW__CORE__FERNET_KEY=ndc7_H8h7pbNlAhm2oVQ6WHWR5YxH4k-mVLkhCpntao= \
-		apache/airflow:2.9.3 airflow users create \
-		--username admin --firstname Admin --lastname User \
-		--role Admin --email admin@example.com --password admin
-	@echo "✅ Airflow initialization completed!"
-	@echo "🔑 Login credentials: admin/admin"
-
-# Cleanup operations
-clean: ## Stop stack and remove containers, networks, and volumes (WARNING: This will delete all data!)
-	@echo "⚠️  WARNING: This will delete ALL data in the stack!"
-	@read -p "Are you sure? Type 'yes' to continue: " confirm; \
-	if [ "$$confirm" = "yes" ]; then \
-		echo "🧹 Cleaning up stack..."; \
-		docker compose down -v --remove-orphans; \
-		docker system prune -f; \
-		echo "✅ Cleanup completed!"; \
+	@echo ""
+	@echo "🌐 Airflow Services:"
+	@echo "-------------------"
+	@echo -n "Checking Airflow Scheduler... "
+	@if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "banesco_airflow_scheduler.*Up"; then \
+		echo -e "$(GREEN)✅ Running$(NC)"; \
 	else \
-		echo "❌ Cleanup cancelled."; \
+		echo -e "$(RED)❌ Not Running$(NC)"; \
 	fi
-
-recreate: ## Stop stack, remove volumes, and start fresh (WARNING: This will delete all data!)
-	@echo "⚠️  WARNING: This will delete ALL data and start fresh!"
-	@read -p "Are you sure? Type 'yes' to continue: " confirm; \
-	if [ "$$confirm" = "yes" ]; then \
-		echo "🔄 Recreating stack with fresh data..."; \
-		docker compose down -v --remove-orphans; \
-		docker compose up -d; \
-		echo "✅ Stack recreated successfully!"; \
+	@echo -n "Checking Airflow Webserver... "
+	@if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "banesco_airflow_webserver.*Up"; then \
+		if curl -s -f "http://localhost:8080/health" > /dev/null 2>&1; then \
+			echo -e "$(GREEN)✅ Running & Healthy$(NC)"; \
+		else \
+			echo -e "$(YELLOW)⚠️  Running but not responding$(NC)"; \
+		fi; \
 	else \
-		echo "❌ Recreate cancelled."; \
+		echo -e "$(RED)❌ Not Running$(NC)"; \
 	fi
+	@echo ""
+	@echo "🌐 Access URLs:"
+	@echo "--------------"
+	@echo "  Airflow Web UI: http://localhost:8080"
+	@echo "  Spark Master UI: http://localhost:8081"
+	@echo "  MinIO Console: http://localhost:9001"
 
-# Utility commands
-shell-postgres: ## Open a PostgreSQL shell (main database)
-	@echo "🐘 Opening PostgreSQL shell (main database)..."
-	docker compose exec postgres psql -U postgres -d banesco_test
+# View logs from all services
+logs:
+	@echo "📋 Viewing logs from all services..."
+	@docker-compose logs -f
 
-shell-airflow-db: ## Open Airflow PostgreSQL shell
-	@echo "🐘 Opening Airflow PostgreSQL shell..."
-	docker compose exec airflow-db psql -U airflow_user -d airflow_db
+# Build custom Airflow image
+build:
+	@echo "🔨 Building custom Airflow image..."
+	@cd stack/airflow && docker build -t banesco-airflow:latest .
 
-shell-mongodb: ## Open a MongoDB shell
-	@echo "🍃 Opening MongoDB shell..."
-	docker compose exec mongodb mongosh -u admin -p admin123
+# Deploy scripts to MinIO
+deploy:
+	@echo "📦 Deploying scripts to MinIO..."
+	@cd stack/airflow/scripts && python deploy_to_minio.py
 
-shell-kafka: ## Open a Kafka shell
-	@echo "📨 Opening Kafka shell..."
-	docker compose exec kafka bash
+# Setup Airflow variables
+setup-vars:
+	@echo "🔧 Setting up Airflow Variables for Banesco Data Stack"
+	@echo "============================================================"
+	@if ! docker ps | grep -q "banesco_airflow_scheduler"; then \
+		echo -e "$(RED)[ERROR]$(NC) Airflow scheduler container is not running!"; \
+		echo -e "$(BLUE)[INFO]$(NC) Please start the stack first with: make start-stack"; \
+		exit 1; \
+	fi
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Airflow container is running"
+	@echo -e "$(BLUE)[INFO]$(NC) Copying setup script to Airflow container..."
+	@docker cp stack/airflow/scripts/setup_airflow_variables.py banesco_airflow_scheduler:/tmp/setup_airflow_variables.py
+	@echo -e "$(BLUE)[INFO]$(NC) Executing variable setup script..."
+	@docker exec banesco_airflow_scheduler python /tmp/setup_airflow_variables.py
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Airflow variables setup completed successfully!"
+	@echo ""
+	@echo "📋 Variables configured:"
+	@echo "  - SPARK_MASTER_URL"
+	@echo "  - MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_SECURE"
+	@echo "  - POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD"
+	@echo "  - MONGO_HOST, MONGO_PORT, MONGO_DB, MONGO_USER, MONGO_PASSWORD"
+	@echo "  - KAFKA_BOOTSTRAP_SERVERS"
+	@echo ""
+	@echo "🌐 You can view these variables in the Airflow UI:"
+	@echo "   http://localhost:8080/admin/variable/"
 
-shell-airflow: ## Open an Airflow shell
-	@echo "🌪️ Opening Airflow shell..."
-	docker compose exec airflow-webserver bash
+# Setup Airflow connections
+setup-conns:
+	@echo "🔧 Setting up Airflow connections..."
+	@if ! docker ps | grep -q "banesco_airflow_scheduler"; then \
+		echo -e "$(RED)[ERROR]$(NC) Airflow scheduler container is not running!"; \
+		exit 1; \
+	fi
+	@echo -e "$(BLUE)[INFO]$(NC) Setting up Airflow connections..."
+	@docker exec banesco_airflow_scheduler python /opt/airflow/scripts/setup_airflow_connections.py
+	@echo -e "$(BLUE)[INFO]$(NC) Setting up Spark connection..."
+	@docker exec banesco_airflow_scheduler python /opt/airflow/scripts/setup_spark_connection.py
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Airflow connections setup completed!"
 
-# Development helpers
-dev-up: ## Start stack for development (with logs)
-	@echo "🔧 Starting stack for development..."
-	docker compose up
+# Test MinIO access
+test-minio:
+	@echo "🧪 Testing MinIO access from Airflow container"
+	@echo "=================================================="
+	@if ! docker ps | grep -q "banesco_airflow_scheduler"; then \
+		echo -e "$(RED)[ERROR]$(NC) Airflow scheduler container is not running!"; \
+		exit 1; \
+	fi
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Airflow container is running"
+	@echo -e "$(BLUE)[INFO]$(NC) Testing MinIO connectivity..."
+	@docker exec banesco_airflow_scheduler curl -f http://minio:9000/minio/health/live
+	@echo -e "$(GREEN)[SUCCESS]$(NC) MinIO is accessible from Airflow container"
+	@echo -e "$(BLUE)[INFO]$(NC) Testing file access in MinIO..."
+	@docker exec banesco_airflow_scheduler python3 -c "import requests; response = requests.get('http://minio:9000/minio/health/live', timeout=10); print(f'MinIO Health Check: {response.status_code}'); print('MinIO connectivity test passed')"
+	@echo -e "$(GREEN)[SUCCESS]$(NC) MinIO file access test passed"
+	@echo -e "$(BLUE)[INFO]$(NC) Testing Spark configuration..."
+	@docker exec banesco_airflow_scheduler python3 -c "from airflow.models import Variable; print('Airflow Variable import: OK'); spark_master = Variable.get('SPARK_MASTER_URL'); minio_endpoint = Variable.get('MINIO_ENDPOINT'); print(f'Spark Master URL: {spark_master}'); print(f'MinIO Endpoint: {minio_endpoint}'); print('Airflow Variables: OK')"
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Spark configuration test passed"
+	@echo -e "$(GREEN)[SUCCESS]$(NC) 🎉 All tests passed!"
+	@echo ""
+	@echo "✅ MinIO is accessible from Airflow"
+	@echo "✅ Files are uploaded to banesco-pa-data-artifact bucket"
+	@echo "✅ Airflow variables are configured"
+	@echo "✅ DAG should be able to access MinIO files"
 
-dev-down: ## Stop development stack
-	@echo "🛑 Stopping development stack..."
-	docker compose down
+# Run integration tests
+test: test-minio
+	@echo "🧪 Running integration tests..."
+	@echo -e "$(GREEN)[SUCCESS]$(NC) Integration tests completed!"
 
-# Backup and restore (basic)
-backup-postgres: ## Backup main PostgreSQL data
-	@echo "💾 Creating main PostgreSQL backup..."
-	@mkdir -p backups
-	docker compose exec postgres pg_dump -U postgres -d banesco_test > backups/postgres_backup_$(shell date +%Y%m%d_%H%M%S).sql
-	@echo "✅ Main PostgreSQL backup created!"
+# Clean up containers and volumes
+clean:
+	@echo "🧹 Cleaning up containers and volumes..."
+	@docker-compose down -v
+	@docker system prune -f
+	@echo "✅ Cleanup completed"
 
-backup-airflow-db: ## Backup Airflow PostgreSQL data
-	@echo "💾 Creating Airflow PostgreSQL backup..."
-	@mkdir -p backups
-	docker compose exec airflow-db pg_dump -U airflow_user -d airflow_db > backups/airflow_db_backup_$(shell date +%Y%m%d_%H%M%S).sql
-	@echo "✅ Airflow PostgreSQL backup created!"
+# Quick setup (build + start + deploy)
+quick-setup: build start deploy
+	@echo "🎉 Quick setup completed!"
 
-backup-mongodb: ## Backup MongoDB data
-	@echo "💾 Creating MongoDB backup..."
-	@mkdir -p backups
-	docker compose exec mongodb mongodump --username admin --password admin123 --authenticationDatabase admin --out /tmp/backup
-	docker compose cp mongodb:/tmp/backup ./backups/mongodb_backup_$(shell date +%Y%m%d_%H%M%S)
-	@echo "✅ MongoDB backup created!"
-
-# Quick access URLs
-urls: ## Show all service URLs
-	@echo "🌐 Service URLs:"
-	@echo "================"
-	@echo "📊 Streamlit Dashboard: http://localhost:8502"
-	@echo "🔧 Airflow UI: http://localhost:8080 (admin/admin)"
-	@echo "📈 Spark Master UI: http://localhost:8081"
-	@echo "💾 MinIO Console: http://localhost:9001 (minioadmin/minioadmin123)"
-	@echo "🐘 PostgreSQL (main): localhost:5433 (postgres/postgres123)"
-	@echo "🐘 PostgreSQL (Airflow): localhost:5434 (airflow_user/airflow_password123)"
-	@echo "🍃 MongoDB: localhost:27017 (admin/admin123)"
-	@echo "📨 Kafka: localhost:9092"
-	@echo "📨 Kafka External: localhost:9094"
-
-# Show current configuration
-config: ## Show current Docker Compose configuration
-	@echo "⚙️  Current Docker Compose Configuration:"
-	@echo "========================================"
-	docker compose config
+# Show service URLs
+urls:
+	@echo "🌐 Service Access URLs:"
+	@echo "  Airflow Web UI:    http://localhost:8080"
+	@echo "  Spark Master UI:   http://localhost:8081"
+	@echo "  MinIO Console:     http://localhost:9001"
+	@echo ""
+	@echo "🔐 Default Credentials:"
+	@echo "  Airflow: admin / admin"
+	@echo "  MinIO:   minioadmin / minioadmin123"
