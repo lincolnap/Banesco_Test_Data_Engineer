@@ -6,6 +6,28 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import requests
 import json
+import sys
+import os
+
+# Add utils to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
+
+from database_connector import DatabaseConnector
+from chart_helpers import (
+    create_member_distance_kpi_chart,
+    create_daily_trends_chart,
+    create_hourly_distribution_chart,
+    create_distance_category_chart,
+    create_time_of_day_chart,
+    create_weekly_patterns_chart,
+    create_station_popularity_chart,
+    create_top_routes_chart,
+    create_database_stats_cards,
+    create_quarter_member_chart,
+    create_quarter_monthly_chart,
+    create_comparison_chart,
+    analyze_growth_trend
+)
 
 # Page configuration
 st.set_page_config(
@@ -14,6 +36,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Auto-refresh configuration
+AUTO_REFRESH_INTERVAL = 30  # seconds
 
 # Custom CSS
 st.markdown("""
@@ -45,18 +70,54 @@ st.markdown("""
         color: #721c24;
         border-left: 4px solid #dc3545;
     }
+    .auto-refresh-indicator {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background-color: #28a745;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 12px;
+        z-index: 1000;
+    }
 </style>
+<script>
+// Auto-refresh every 30 seconds
+setTimeout(function(){
+    window.parent.location.reload();
+}, 30000);
+</script>
 """, unsafe_allow_html=True)
 
 # Header
 st.markdown('<h1 class="main-header">🏦 Banesco Data Engineering Stack</h1>', unsafe_allow_html=True)
 
-# Sidebar
+# Auto-refresh indicator
+st.markdown('<div class="auto-refresh-indicator">🔄 Auto-refresh: 30s</div>', unsafe_allow_html=True)
+
+# Sidebar Navigation with Buttons
 st.sidebar.title("📋 Navigation")
-page = st.sidebar.selectbox(
-    "Choose a page:",
-    ["Dashboard", "Service Status", "Data Connectors", "Monitoring"]
-)
+st.sidebar.markdown("### Dashboard Pages")
+
+# Initialize session state for page navigation
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "🚴 Divvy Bikes Analytics"
+
+# Navigation buttons
+if st.sidebar.button("🚴 Divvy Bikes Analytics", use_container_width=True):
+    st.session_state.current_page = "🚴 Divvy Bikes Analytics"
+
+if st.sidebar.button("📊 Member Distance Analysis", use_container_width=True):
+    st.session_state.current_page = "📊 Member Distance Analysis"
+
+if st.sidebar.button("📈 Temporal Analysis", use_container_width=True):
+    st.session_state.current_page = "📈 Temporal Analysis"
+
+if st.sidebar.button("🏠 System Dashboard", use_container_width=True):
+    st.session_state.current_page = "🏠 System Dashboard"
+
+page = st.session_state.current_page
 
 # Service configurations
 services = {
@@ -81,7 +142,239 @@ def check_service_status(service_name, port):
     except:
         return False
 
-if page == "Dashboard":
+if page == "🚴 Divvy Bikes Analytics":
+    st.header("🚴 Divvy Bikes Analytics Dashboard")
+    
+    # Initialize database connector
+    db_connector = DatabaseConnector()
+    
+    # Database connection status
+    try:
+        stats_df = db_connector.get_database_stats()
+        if not stats_df.empty:
+            st.success("✅ Connected to PostgreSQL Analytics Database")
+            
+            # Display key metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            stats = create_database_stats_cards(stats_df)
+            
+            with col1:
+                st.metric("Total Rides", stats.get('Total Rides', 'N/A'))
+            with col2:
+                st.metric("Total Distance", f"{stats.get('Total Distance (km)', 'N/A')} km")
+            with col3:
+                st.metric("Unique Stations", stats.get('Unique Stations', 'N/A'))
+            with col4:
+                st.metric("Date Range", stats.get('Date Range', 'N/A')[:20] + "..." if len(stats.get('Date Range', '')) > 20 else stats.get('Date Range', 'N/A'))
+        else:
+            st.warning("⚠️ No data available in analytics database")
+    except Exception as e:
+        st.error(f"❌ Error connecting to database: {str(e)}")
+        st.stop()
+    
+    # Main analytics sections
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "⏰ Temporal Analysis", "🗺️ Geographic Analysis", "👥 User Behavior"])
+    
+    with tab1:
+        st.subheader("📊 Overview Analytics")
+        
+        # Member Distance KPIs
+        st.subheader("🎯 Member Distance Analysis - Key Performance Indicators")
+        member_kpi_df = db_connector.get_member_distance_kpi()
+        
+        if not member_kpi_df.empty:
+            # Display KPI chart
+            fig_kpi = create_member_distance_kpi_chart(member_kpi_df)
+            st.plotly_chart(fig_kpi, use_container_width=True)
+            
+            # Display KPI table
+            st.subheader("📋 Detailed KPI Metrics")
+            st.dataframe(member_kpi_df, use_container_width=True)
+        else:
+            st.warning("No member distance KPI data available")
+        
+        # Station Popularity
+        st.subheader("🏆 Top Popular Stations")
+        station_df = db_connector.get_station_popularity()
+        
+        if not station_df.empty:
+            fig_stations = create_station_popularity_chart(station_df)
+            st.plotly_chart(fig_stations, use_container_width=True)
+        else:
+            st.warning("No station data available")
+    
+    with tab2:
+        st.subheader("⏰ Temporal Analysis")
+        
+        # Daily trends
+        daily_df = db_connector.get_daily_trends()
+        if not daily_df.empty:
+            fig_daily = create_daily_trends_chart(daily_df)
+            st.plotly_chart(fig_daily, use_container_width=True)
+        
+        # Hourly distribution
+        hourly_df = db_connector.get_hourly_distribution()
+        if not hourly_df.empty:
+            fig_hourly = create_hourly_distribution_chart(hourly_df)
+            st.plotly_chart(fig_hourly, use_container_width=True)
+    
+    with tab3:
+        st.subheader("🗺️ Geographic Analysis")
+        
+        # Distance categories
+        distance_df = db_connector.get_distance_category_analysis()
+        if not distance_df.empty:
+            fig_distance = create_distance_category_chart(distance_df)
+            st.plotly_chart(fig_distance, use_container_width=True)
+    
+    with tab4:
+        st.subheader("👥 User Behavior Analysis")
+        
+        # Time of day preferences
+        time_df = db_connector.get_time_of_day_analysis()
+        if not time_df.empty:
+            fig_time = create_time_of_day_chart(time_df)
+            st.plotly_chart(fig_time, use_container_width=True)
+
+elif page == "📈 Temporal Analysis":
+    st.header("📈 Temporal Analysis - Q1 & Comparative Insights")
+    
+    # Initialize database connector
+    db_connector = DatabaseConnector()
+    
+    # Check database connection
+    try:
+        test_data = db_connector.get_member_distance_kpi()
+        if test_data.empty:
+            st.error("❌ No data available. Please ensure data has been loaded to PostgreSQL.")
+            st.stop()
+    except Exception as e:
+        st.error(f"❌ Database connection error: {str(e)}")
+        st.stop()
+    
+    # Quarter Selection
+    quarter_options = {
+        "Q1 (Enero-Marzo)": 1,
+        "Q2 (Abril-Junio)": 2, 
+        "Q3 (Julio-Septiembre)": 3,
+        "Q4 (Octubre-Diciembre)": 4
+    }
+    
+    selected_quarter_text = st.selectbox(
+        "Selecciona el cuartil para analizar:",
+        list(quarter_options.keys()),
+        index=1,  # Default to Q2 since we have April data
+        key="quarter_selector"
+    )
+    
+    selected_quarter = quarter_options[selected_quarter_text]
+    
+    # Quarter Analysis Section
+    st.subheader(f"📅 {selected_quarter_text} Analysis")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Quarter KPIs
+        quarter_data = db_connector.get_quarter_analysis(selected_quarter)
+        if not quarter_data.empty and quarter_data.iloc[0]['total_rides'] > 0:
+            total_rides = quarter_data.iloc[0]['total_rides']
+            total_distance = quarter_data.iloc[0]['total_distance'] or 0
+            avg_distance = quarter_data.iloc[0]['avg_distance'] or 0
+            
+            st.metric(f"{selected_quarter_text} Total Rides", f"{total_rides:,}")
+            st.metric(f"{selected_quarter_text} Total Distance", f"{total_distance:,.1f} km")
+            st.metric(f"{selected_quarter_text} Avg Distance", f"{avg_distance:.2f} km")
+        else:
+            st.warning(f"No data available for {selected_quarter_text}")
+    
+    with col2:
+        # Quarter by Member Type
+        quarter_member_data = db_connector.get_quarter_by_member_type(selected_quarter)
+        if not quarter_member_data.empty:
+            fig_quarter_member = create_quarter_member_chart(quarter_member_data, selected_quarter_text)
+            st.plotly_chart(fig_quarter_member, use_container_width=True)
+        else:
+            st.warning(f"No member data available for {selected_quarter_text}")
+    
+    # Monthly trend in selected quarter
+    st.subheader(f"📊 {selected_quarter_text} Monthly Trend")
+    quarter_monthly = db_connector.get_quarter_monthly_trend(selected_quarter)
+    if not quarter_monthly.empty:
+        fig_quarter_monthly = create_quarter_monthly_chart(quarter_monthly, selected_quarter_text)
+        st.plotly_chart(fig_quarter_monthly, use_container_width=True)
+    else:
+        st.warning(f"No monthly trend data available for {selected_quarter_text}")
+    
+    # Separator
+    st.markdown("---")
+    
+    # Comparative Analysis Section
+    st.subheader("⚖️ Comparative Analysis")
+    
+    # Comparison type selector
+    comparison_type = st.selectbox(
+        "Select comparison period:",
+        ["Días (Day-to-Day)", "Meses (Month-to-Month)", "Cuartiles (Quarter-to-Quarter)", "Años (Year-to-Year)"],
+        key="comparison_type"
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Period selector based on comparison type
+        if comparison_type == "Días (Day-to-Day)":
+            comparison_data = db_connector.get_daily_comparison()
+            st.subheader("📈 Daily Rides Comparison")
+        elif comparison_type == "Meses (Month-to-Month)":
+            comparison_data = db_connector.get_monthly_comparison()
+            st.subheader("📈 Monthly Rides Comparison")
+        elif comparison_type == "Cuartiles (Quarter-to-Quarter)":
+            comparison_data = db_connector.get_quarterly_comparison()
+            st.subheader("📈 Quarterly Rides Comparison")
+        else:  # Años
+            comparison_data = db_connector.get_yearly_comparison()
+            st.subheader("📈 Yearly Rides Comparison")
+        
+        if not comparison_data.empty:
+            # Calculate change metrics
+            if len(comparison_data) >= 2:
+                current_period = comparison_data.iloc[-1]['total_rides']
+                previous_period = comparison_data.iloc[-2]['total_rides']
+                change = current_period - previous_period
+                change_pct = (change / previous_period) * 100 if previous_period > 0 else 0
+                
+                # Display metrics
+                st.metric(
+                    "Current Period", 
+                    f"{current_period:,}", 
+                    delta=f"{change:+,} ({change_pct:+.1f}%)"
+                )
+        else:
+            st.warning("No comparison data available")
+    
+    with col2:
+        # Comparison chart
+        if not comparison_data.empty:
+            fig_comparison = create_comparison_chart(comparison_data, comparison_type)
+            st.plotly_chart(fig_comparison, use_container_width=True)
+    
+    # Trend Analysis
+    st.subheader("📊 Trend Analysis")
+    if not comparison_data.empty:
+        # Growth trend analysis
+        growth_analysis = analyze_growth_trend(comparison_data)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Trend Direction", growth_analysis['direction'])
+        with col2:
+            st.metric("Average Growth", f"{growth_analysis['avg_growth']:.1f}%")
+        with col3:
+            st.metric("Periods Analyzed", growth_analysis['periods'])
+
+elif page == "🏠 System Dashboard":
     st.header("📊 System Overview")
     
     # Metrics row
@@ -163,7 +456,158 @@ if page == "Dashboard":
             
         st.empty()  # Clear the container
 
-elif page == "Service Status":
+elif page == "📊 Member Distance Analysis":
+    st.header("📊 Member Distance Analysis - Deep Dive")
+    
+    # Initialize database connector
+    db_connector = DatabaseConnector()
+    
+    # Get member distance KPI data
+    member_kpi_df = db_connector.get_member_distance_kpi()
+    
+    if member_kpi_df.empty:
+        st.warning("⚠️ No member distance data available. Please ensure data has been loaded to PostgreSQL.")
+        st.stop()
+    
+    # Main KPI Cards
+    st.subheader("🎯 Key Performance Indicators")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        member_data = member_kpi_df[member_kpi_df['member_casual'] == 'MEMBER']
+        casual_data = member_kpi_df[member_kpi_df['member_casual'] == 'CASUAL']
+        
+        if not member_data.empty and not casual_data.empty:
+            member_avg = member_data['avg_distance_km'].iloc[0]
+            casual_avg = casual_data['avg_distance_km'].iloc[0]
+            diff = member_avg - casual_avg
+            
+            st.metric(
+                "Member Avg Distance", 
+                f"{member_avg:.3f} km",
+                delta=f"{diff:+.3f} km vs Casual"
+            )
+    
+    with col2:
+        if not member_data.empty and not casual_data.empty:
+            member_total = member_data['total_distance_km'].iloc[0]
+            casual_total = casual_data['total_distance_km'].iloc[0]
+            
+            st.metric(
+                "Member Total Distance", 
+                f"{member_total:.2f} km",
+                delta=f"{((member_total - casual_total) / casual_total * 100):+.1f}% vs Casual"
+            )
+    
+    with col3:
+        if not member_data.empty and not casual_data.empty:
+            member_median = member_data['median_distance_km'].iloc[0]
+            casual_median = casual_data['median_distance_km'].iloc[0]
+            
+            st.metric(
+                "Member Median Distance", 
+                f"{member_median:.3f} km",
+                delta=f"{member_median - casual_median:+.3f} km vs Casual"
+            )
+    
+    with col4:
+        if not member_data.empty and not casual_data.empty:
+            member_duration = member_data['avg_duration_minutes'].iloc[0]
+            casual_duration = casual_data['avg_duration_minutes'].iloc[0]
+            
+            st.metric(
+                "Member Avg Duration", 
+                f"{member_duration:.1f} min",
+                delta=f"{member_duration - casual_duration:+.1f} min vs Casual"
+            )
+    
+    # Detailed Analysis Charts
+    st.subheader("📈 Detailed Analysis")
+    
+    # Create comprehensive KPI chart
+    fig_kpi = create_member_distance_kpi_chart(member_kpi_df)
+    st.plotly_chart(fig_kpi, use_container_width=True)
+    
+    # Comparative Analysis Table
+    st.subheader("📋 Comparative Analysis Table")
+    
+    # Create comparison table
+    comparison_df = member_kpi_df.pivot(
+        index=['total_rides', 'avg_distance_km', 'total_distance_km', 'median_distance_km', 
+               'p75_distance_km', 'p25_distance_km', 'avg_duration_minutes', 
+               'unique_start_stations', 'unique_end_stations'],
+        columns='member_casual',
+        values='total_rides'
+    ).fillna(0)
+    
+    # Display the detailed metrics
+    st.dataframe(member_kpi_df, use_container_width=True)
+    
+    # Insights Section
+    st.subheader("💡 Key Insights")
+    
+    if not member_data.empty and not casual_data.empty:
+        insights = []
+        
+        # Distance insights
+        if member_avg > casual_avg:
+            insights.append(f"✅ **Members ride longer distances** on average ({member_avg:.3f} km vs {casual_avg:.3f} km)")
+        else:
+            insights.append(f"ℹ️ **Casual users ride longer distances** on average ({casual_avg:.3f} km vs {member_avg:.3f} km)")
+        
+        # Duration insights
+        if member_duration > casual_duration:
+            insights.append(f"⏱️ **Members have longer ride durations** on average ({member_duration:.1f} min vs {casual_duration:.1f} min)")
+        else:
+            insights.append(f"⏱️ **Casual users have longer ride durations** on average ({casual_duration:.1f} min vs {member_duration:.1f} min)")
+        
+        # Station usage insights
+        member_stations = member_data['unique_start_stations'].iloc[0]
+        casual_stations = casual_data['unique_start_stations'].iloc[0]
+        
+        if member_stations > casual_stations:
+            insights.append(f"🚴 **Members use more diverse stations** ({member_stations} vs {casual_stations} unique stations)")
+        else:
+            insights.append(f"🚴 **Casual users use more diverse stations** ({casual_stations} vs {member_stations} unique stations)")
+        
+        # Display insights
+        for insight in insights:
+            st.markdown(insight)
+    
+    # Additional Analysis Options
+    st.subheader("🔍 Additional Analysis")
+    
+    analysis_type = st.selectbox(
+        "Select additional analysis:",
+        ["Daily Trends", "Hourly Distribution", "Distance Categories", "Time of Day"]
+    )
+    
+    if analysis_type == "Daily Trends":
+        daily_df = db_connector.get_daily_trends(days=30)
+        if not daily_df.empty:
+            fig_daily = create_daily_trends_chart(daily_df)
+            st.plotly_chart(fig_daily, use_container_width=True)
+    
+    elif analysis_type == "Hourly Distribution":
+        hourly_df = db_connector.get_hourly_distribution()
+        if not hourly_df.empty:
+            fig_hourly = create_hourly_distribution_chart(hourly_df)
+            st.plotly_chart(fig_hourly, use_container_width=True)
+    
+    elif analysis_type == "Distance Categories":
+        distance_df = db_connector.get_distance_category_analysis()
+        if not distance_df.empty:
+            fig_distance = create_distance_category_chart(distance_df)
+            st.plotly_chart(fig_distance, use_container_width=True)
+    
+    elif analysis_type == "Time of Day":
+        time_df = db_connector.get_time_of_day_analysis()
+        if not time_df.empty:
+            fig_time = create_time_of_day_chart(time_df)
+            st.plotly_chart(fig_time, use_container_width=True)
+
+elif page == "🔍 Service Status":
     st.header("🔍 Service Status Monitor")
     
     for service_name, config in services.items():
@@ -180,103 +624,6 @@ elif page == "Service Status":
             else:
                 st.markdown('<div class="service-status status-stopped">Offline</div>', unsafe_allow_html=True)
 
-elif page == "Data Connectors":
-    st.header("🔗 Data Connectors")
-    
-    # Connection examples
-    st.subheader("Database Connections")
-    
-    with st.expander("PostgreSQL Connection"):
-        st.code("""
-import psycopg2
-conn = psycopg2.connect(
-    host="postgres",
-    port=5432,
-    database="airflow_db",
-    user="postgres",
-    password="postgres123"
-)
-        """, language="python")
-    
-    with st.expander("MongoDB Connection"):
-        st.code("""
-from pymongo import MongoClient
-client = MongoClient(
-    host="mongodb",
-    port=27017,
-    username="admin",
-    password="admin123"
-)
-        """, language="python")
-    
-    with st.expander("Kafka Producer"):
-        st.code("""
-from kafka import KafkaProducer
-producer = KafkaProducer(
-    bootstrap_servers=['kafka:9092'],
-    value_serializer=lambda x: json.dumps(x).encode('utf-8')
-)
-        """, language="python")
-    
-    with st.expander("MinIO Client"):
-        st.code("""
-from minio import Minio
-client = Minio(
-    'minio:9000',
-    access_key='minioadmin',
-    secret_key='minioadmin123',
-    secure=False
-)
-        """, language="python")
-
-elif page == "Monitoring":
-    st.header("📊 System Monitoring")
-    
-    # System metrics simulation
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Resource Usage")
-        
-        # CPU usage
-        cpu_data = pd.DataFrame({
-            'time': pd.date_range(start='2024-01-01', periods=24, freq='H'),
-            'cpu': np.random.normal(50, 15, 24)
-        })
-        
-        fig = px.area(cpu_data, x='time', y='cpu', 
-                     title="CPU Usage Over Time")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.subheader("Memory Usage")
-        
-        # Memory usage
-        memory_data = pd.DataFrame({
-            'time': pd.date_range(start='2024-01-01', periods=24, freq='H'),
-            'memory': np.random.normal(60, 10, 24)
-        })
-        
-        fig = px.area(memory_data, x='time', y='memory', 
-                     title="Memory Usage Over Time")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Alerts section
-    st.subheader("🚨 System Alerts")
-    
-    alerts = [
-        {"service": "Kafka", "level": "Warning", "message": "High message lag detected", "time": "2024-01-15 14:30"},
-        {"service": "PostgreSQL", "level": "Info", "message": "Backup completed successfully", "time": "2024-01-15 14:00"},
-        {"service": "Airflow", "level": "Error", "message": "DAG execution failed", "time": "2024-01-15 13:45"},
-    ]
-    
-    for alert in alerts:
-        if alert["level"] == "Error":
-            st.error(f"🔴 **{alert['service']}**: {alert['message']} - {alert['time']}")
-        elif alert["level"] == "Warning":
-            st.warning(f"🟡 **{alert['service']}**: {alert['message']} - {alert['time']}")
-        else:
-            st.info(f"🔵 **{alert['service']}**: {alert['message']} - {alert['time']}")
 
 # Footer
 st.markdown("---")

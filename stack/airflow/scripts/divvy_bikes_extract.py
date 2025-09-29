@@ -78,6 +78,7 @@ def create_spark_session(config):
         .config("spark.executorEnv.PYSPARK_PYTHON", worker_python) \
         .config("spark.python.worker.memory", "1g") \
         .config("spark.python.worker.reuse", "true") \
+        .config("spark.sql.sources.partitionOverwriteMode", "dynamic") \
         .config("spark.hadoop.fs.s3a.endpoint", f"http://{config['MINIO_ENDPOINT']}") \
         .config("spark.hadoop.fs.s3a.access.key", f"{config['MINIO_ACCESS_KEY']}") \
         .config("spark.hadoop.fs.s3a.secret.key", f"{config['MINIO_SECRET_KEY']}") \
@@ -124,14 +125,13 @@ def pandas_to_spark(pandas_df, spark_session):
     return df
 
 
-def save_parquet(df, partition, output_path, file_name, spark):
+def save_parquet(df, partition, output_path, spark):
     """Save DataFrame as Parquet to MinIO bucket with date partitioning"""
     try:
         print(f"💾 Saving to MinIO bucket with date partitioning...")
         
-        # Create full path
-        full_path = f"{output_path}{file_name.replace('.csv', '')}"
-        print(f"📍 Path: {full_path}")
+
+        print(f"📍 Path: {output_path}")
         
         # Save as Parquet with date partitioning
         df.write \
@@ -139,14 +139,14 @@ def save_parquet(df, partition, output_path, file_name, spark):
             .option("compression", "snappy") \
             .option("spark.sql.parquet.compression.codec", "snappy") \
             .partitionBy(partition) \
-            .parquet(full_path)
+            .parquet(output_path)
         
         print(f"✅ Successfully saved to MinIO with date partitioning!")
-        print(f"📍 Location: {full_path}")
+        print(f"📍 Location: {output_path}")
         print(f"📅 Partitioned by: dt (date column)")
         
         # Verify
-        verify_df = spark.read.parquet(full_path)
+        verify_df = spark.read.parquet(output_path)
         verify_count = verify_df.count()
         original_count = df.count()
         
@@ -156,7 +156,7 @@ def save_parquet(df, partition, output_path, file_name, spark):
         print("📊 Partition information:")
         verify_df.select("dt").distinct().orderBy("dt").show(10, truncate=False)
         
-        return True, full_path
+        return True, output_path
         
     except Exception as e:
         print(f"❌ Error saving to MinIO: {str(e)}")
@@ -176,7 +176,7 @@ def main():
     zip_url = f"https://divvy-tripdata.s3.amazonaws.com/{year_mon}-divvy-tripdata.zip"
     bucket_name = config['OUTPUT_BUCKET']
     file_name = f"{year_mon}-divvy-tripdata.csv"
-    output_path = f"s3a://{bucket_name}/divvy-bikes/"
+    output_path = f"s3a://{bucket_name}/banes_raw_divvy_bikes/"
     
     print(f"📊 Processing data for: {year_mon}")
     print(f"📥 Source URL: {zip_url}")
@@ -193,7 +193,7 @@ def main():
         df = pandas_to_spark(df_pandas, spark)
         
         # Save as Parquet
-        success, path = save_parquet(df, "dt", output_path, file_name, spark)
+        success, path = save_parquet(df, "dt", output_path, spark)
         
         if success:
             print(f"✅ Data extraction completed successfully!")

@@ -147,7 +147,7 @@ services:
     depends_on:
       airflow-db:
         condition: service_healthy
-    command: airflow scheduler
+    command: scheduler
     healthcheck:
       test: ["CMD-SHELL", "[ -f /opt/airflow/airflow-webserver.pid ]"]
       interval: 30s
@@ -190,7 +190,7 @@ services:
     depends_on:
       airflow-db:
         condition: service_healthy
-    command: airflow webserver
+    command: webserver
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
@@ -257,6 +257,36 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Streamlit Dashboard
+  streamlit:
+    build: ./stack/streamlit
+    container_name: banesco_streamlit
+    ports:
+      - "${STREAMLIT_EXTERNAL_PORT:-8501}:8501"
+    environment:
+      # PostgreSQL Connection (using environment variables with defaults)
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-banesco_test}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres123}
+      # Streamlit Configuration
+      - STREAMLIT_SERVER_PORT=${STREAMLIT_SERVER_PORT:-8501}
+      - STREAMLIT_SERVER_ADDRESS=${STREAMLIT_SERVER_ADDRESS:-0.0.0.0}
+      - STREAMLIT_AUTO_REFRESH_INTERVAL=${STREAMLIT_AUTO_REFRESH_INTERVAL:-30}
+    networks:
+      - banesco_test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 networks:
   banesco_test:

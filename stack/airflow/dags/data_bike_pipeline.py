@@ -4,8 +4,11 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.models import Variable
-
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+
+# Import for cleanup functionality
+from airflow.operators.python import PythonOperator
+import subprocess
 
 # Function to get Airflow variables with fallback values
 def get_airflow_var(var_name, default_value=None):
@@ -15,6 +18,43 @@ def get_airflow_var(var_name, default_value=None):
     except KeyError:
         print(f"Warning: Variable {var_name} not found, using default: {default_value}")
         return default_value
+
+def get_cleanup_sql_for_date_range():
+    """Generate SQL cleanup commands for the current YearMon variable"""
+    from datetime import datetime, timedelta
+    
+    try:
+        year_month = Variable.get('YearMon', '202304')
+        year = int(year_month[:4])
+        month = int(year_month[4:6])
+        
+        start_date = datetime(year, month, 1).date()
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1).date() - timedelta(days=1)
+        else:
+            end_date = datetime(year, month + 1, 1).date() - timedelta(days=1)
+        
+        # Generate cleanup SQL
+        cleanup_sql = f"""
+        -- Cleanup data for {year_month} ({start_date} to {end_date})
+        DELETE FROM analytics.agg_user_behavior WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
+        DELETE FROM analytics.agg_station_metrics WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
+        DELETE FROM analytics.agg_geographical_analysis WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
+        DELETE FROM analytics.agg_daily_metrics WHERE date_key BETWEEN '{start_date}' AND '{end_date}';
+        DELETE FROM analytics.fact_rides WHERE dt BETWEEN '{start_date}' AND '{end_date}';
+        DELETE FROM analytics.dim_time WHERE time_key BETWEEN '{start_date}' AND '{end_date}';
+
+        -- Analyze tables for performance
+        ANALYZE analytics.fact_rides;
+        ANALYZE analytics.dim_stations;
+        ANALYZE analytics.dim_time;
+        """
+        
+        return cleanup_sql.strip()
+        
+    except Exception as e:
+        print(f"Error generating cleanup SQL: {str(e)}")
+        raise
 
 # Default arguments
 default_args = {
@@ -38,7 +78,7 @@ dag = DAG(
 
 # Task 1: Extract Divvy Bikes data using Spark
 extract_task = SparkSubmitOperator(
-    task_id='extract',
+    task_id='Extract_Data',
     application='/opt/airflow/scripts/divvy_bikes_extract.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
@@ -67,7 +107,7 @@ extract_task = SparkSubmitOperator(
 
 # Task 2: Transform Divvy Bikes data using Spark
 transform_task = SparkSubmitOperator(
-    task_id='transform_data',
+    task_id='Transform_Data',
     application='/opt/airflow/scripts/divvy_bikes_transformation.py',
     conn_id='spark_default',
     packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
@@ -94,101 +134,99 @@ transform_task = SparkSubmitOperator(
     ],
     dag=dag,
 )
-#else:
-#    # Fallback to BashOperator if SparkSubmitOperator is not available
-#    extract_task = BashOperator(
-#        task_id='extract',
-#        bash_command='''
-#        echo "SparkSubmitOperator not available, using fallback method"
-#        echo "This is a placeholder for the extract task"
-#        echo "Year-Month: {{ ds_nodash[:6] }}"
-#        echo "To fix this, ensure apache-airflow-providers-apache-spark is installed"
-#        ''',
-#        dag=dag,
-#    )
-#
-## Task 2: Transform data
-#def transform_data():
-#def transform_data():
-#def transform_data():
-#    """Transform the extracted data"""
-#    print("Transforming data...")
-#    
-#    # Get configuration from Airflow variables
-#    minio_endpoint = get_airflow_var('MINIO_ENDPOINT', 'minio:9000')
-#    postgres_host = get_airflow_var('POSTGRES_HOST', 'postgres')
-#    postgres_port = get_airflow_var('POSTGRES_PORT', '5432')
-#    postgres_db = get_airflow_var('POSTGRES_DB', 'banesco_test')
-#    
-#    print(f"Configuration loaded:")
-#    print(f"  MinIO Endpoint: {minio_endpoint}")
-#    print(f"  PostgreSQL Host: {postgres_host}:{postgres_port}")
-#    print(f"  PostgreSQL Database: {postgres_db}")
-#    
-#    # Simulate data transformation
-#    import time
-#    time.sleep(3)
-#    print("Data transformation completed successfully!")
-#    return "transformed_data"
-#
-#transform_task = PythonOperator(
-#    task_id='transform_data',
-#    python_callable=transform_data,
-#    dag=dag,
-#)
-#
-## Task 3: Load data to PostgreSQL
-#load_to_postgres = PostgresOperator(
-#    task_id='load_to_postgres',
-#    postgres_conn_id='postgres_default',
-#    sql="""
-#    CREATE TABLE IF NOT EXISTS daily_summary (
-#        id SERIAL PRIMARY KEY,
-#        date DATE,
-#        total_transactions INTEGER,
-#        total_amount DECIMAL(15,2),
-#        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-#    );
-#    
-#    INSERT INTO daily_summary (date, total_transactions, total_amount)
-#    VALUES (CURRENT_DATE, 1000, 50000.00);
-#    """,
-#    dag=dag,
-#)
-#
-## Task 4: Generate report
-#def generate_report():
-#    """Generate a summary report"""
-#    print("Generating daily report...")
-#    
-#    # Get configuration from Airflow variables
-#    mongo_host = get_airflow_var('MONGO_HOST', 'mongodb')
-#    mongo_port = get_airflow_var('MONGO_PORT', '27017')
-#    mongo_db = get_airflow_var('MONGO_DB', 'banesco_test')
-#    kafka_servers = get_airflow_var('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092')
-#    
-#    print(f"Report configuration:")
-#    print(f"  MongoDB: {mongo_host}:{mongo_port}/{mongo_db}")
-#    print(f"  Kafka: {kafka_servers}")
-#    
-#    # Simulate report generation
-#    import time
-#    time.sleep(1)
-#    print("Report generated successfully!")
-#    return "report_generated"
-#
-#report_task = PythonOperator(
-#    task_id='generate_report',
-#    python_callable=generate_report,
-#    dag=dag,
-#)
-#
-## Task 5: Cleanup
-#cleanup_task = BashOperator(
-#    task_id='cleanup_temp_files',
-#    bash_command='echo "Cleaning up temporary files..." && sleep 1 && echo "Cleanup completed!"',
-#    dag=dag,
-#)
-#
-# Define task dependencies
-extract_task >> transform_task
+
+# Task 3: Cleanup PostgreSQL data before loading  
+cleanup_postgres_task = PostgresOperator(
+    task_id='Cleanup_PostgreSQL_Data',
+    postgres_conn_id='postgres_default',
+    sql="""
+    -- Cleanup data for month {{ var.value.YearMon }}
+    
+    -- Calculate date range
+    DO $$
+    DECLARE
+        start_date date;
+        end_date date;
+        deleted_count int;
+    BEGIN
+        -- Calculate start and end dates for the month
+        start_date := DATE_TRUNC('month', TO_DATE('{{ var.value.YearMon }}01', 'YYYYMMDD'))::date;
+        end_date := (DATE_TRUNC('month', TO_DATE('{{ var.value.YearMon }}01', 'YYYYMMDD')) + INTERVAL '1 month' - INTERVAL '1 day')::date;
+        
+        RAISE NOTICE 'Cleaning up data for period: % to %', start_date, end_date;
+        
+        -- Delete aggregated tables first (no FK dependencies)
+        DELETE FROM analytics.agg_user_behavior WHERE date_key BETWEEN start_date AND end_date;
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RAISE NOTICE 'Deleted % rows from agg_user_behavior', deleted_count;
+        
+        DELETE FROM analytics.agg_station_metrics WHERE date_key BETWEEN start_date AND end_date;
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RAISE NOTICE 'Deleted % rows from agg_station_metrics', deleted_count;
+        
+        DELETE FROM analytics.agg_geographical_analysis WHERE date_key BETWEEN start_date AND end_date;
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RAISE NOTICE 'Deleted % rows from agg_geographical_analysis', deleted_count;
+        
+        DELETE FROM analytics.agg_daily_metrics WHERE date_key BETWEEN start_date AND end_date;
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RAISE NOTICE 'Deleted % rows from agg_daily_metrics', deleted_count;
+        
+        -- Delete fact table
+        DELETE FROM analytics.fact_rides WHERE dt BETWEEN start_date AND end_date;
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RAISE NOTICE 'Deleted % rows from fact_rides', deleted_count;
+        
+        -- Delete dim_time (only if no other facts reference it)
+        DELETE FROM analytics.dim_time WHERE time_key BETWEEN start_date AND end_date
+        AND NOT EXISTS (SELECT 1 FROM analytics.fact_rides WHERE dt = dim_time.time_key);
+        GET DIAGNOSTICS deleted_count = ROW_COUNT;
+        RAISE NOTICE 'Deleted % rows from dim_time', deleted_count;
+        
+        RAISE NOTICE 'Cleanup completed successfully for {{ var.value.YearMon }}';
+    END $$;
+    
+    -- Analyze tables for performance
+    ANALYZE analytics.fact_rides;
+    ANALYZE analytics.dim_stations;
+    ANALYZE analytics.dim_time;
+    """,
+    dag=dag,
+)
+
+# Task 4: Load data to PostgreSQL
+load_to_postgres_task = SparkSubmitOperator(
+    task_id='Load_to_Postgres',
+    application='/opt/airflow/scripts/divvy_bikes_load_to_postgres.py',
+    conn_id='spark_default',
+    packages='org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.6.0',
+    conf={
+        'spark.sql.adaptive.enabled': 'true',
+        'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
+        'spark.driver.memory': '2g',
+        'spark.executor.memory': '2g',
+        'spark.executor.cores': '2',
+        'spark.executor.instances': '2',
+        'spark.hadoop.fs.s3a.impl': 'org.apache.hadoop.fs.s3a.S3AFileSystem',
+        'spark.hadoop.fs.s3a.path.style.access': 'true',
+        'spark.hadoop.fs.s3a.connection.ssl.enabled': 'false',
+        'spark.hadoop.fs.s3a.aws.credentials.provider': 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider'
+    },
+    application_args=[
+        '--year-month', '{{ var.value.YearMon }}',
+        '--minio-endpoint', '{{ var.value.MINIO_ENDPOINT }}',
+        '--minio-access-key', '{{ var.value.MINIO_ACCESS_KEY }}',
+        '--minio-secret-key', '{{ var.value.MINIO_SECRET_KEY }}',
+        '--postgres-host', '{{ var.value.POSTGRES_HOST }}',
+        '--postgres-port', '{{ var.value.POSTGRES_PORT }}',
+        '--postgres-db', '{{ var.value.POSTGRES_DB }}',
+        '--postgres-user', '{{ var.value.POSTGRES_USER }}',
+        '--postgres-password', '{{ var.value.POSTGRES_PASSWORD }}',
+        '--input-bucket', 'banesco-pa-data-stage-zone',
+        '--spark-master', '{{ var.value.SPARK_MASTER_URL }}'
+    ],
+    dag=dag,
+)
+
+
+extract_task >> transform_task >> cleanup_postgres_task >> load_to_postgres_task
