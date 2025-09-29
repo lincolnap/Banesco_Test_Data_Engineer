@@ -5,7 +5,11 @@
 # Stack data and logs
 stack/**/data/
 stack/**/logs/
-stack/**/config/
+# Ignore specific config directories but allow Spark config
+stack/airflow/airflow.env
+stack/minio/config/
+stack/postgres/init/
+stack/airflow-db/init/
 
 # OS files
 .DS_Store
