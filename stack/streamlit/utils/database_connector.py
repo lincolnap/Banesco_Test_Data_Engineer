@@ -3,6 +3,7 @@ Database Connector for Streamlit Dashboard
 Handles connections to PostgreSQL for Divvy Bikes analytics
 """
 
+import os
 import psycopg2
 import pandas as pd
 import streamlit as st
@@ -16,25 +17,25 @@ class DatabaseConnector:
     
     def __init__(self):
         self.config = {
-            "host": "postgres",
-            "port": "5433",
-            "database": "banesco_test",
-            "user": "postgres",
-            "password": "postgres123"
+            "host": os.getenv("POSTGRES_HOST", "postgres"),  # Use Docker service name
+            "port": os.getenv("POSTGRES_PORT", "5432"),      # Internal Docker port
+            "database": os.getenv("POSTGRES_DB", "banesco_test"),
+            "user": os.getenv("POSTGRES_USER", "postgres"),
+            "password": os.getenv("POSTGRES_PASSWORD", "postgres123")
         }
         self.connection_string = f"postgresql://{self.config['user']}:{self.config['password']}@{self.config['host']}:{self.config['port']}/{self.config['database']}"
     
     @st.cache_resource
-    def get_connection(self):
+    def get_connection(_self):
         """Get cached database connection"""
         try:
-            engine = create_engine(self.connection_string)
+            engine = create_engine(_self.connection_string)
             return engine
         except Exception as e:
             st.error(f"Error connecting to database: {str(e)}")
             return None
     
-    @st.cache_data(ttl=300)  # Cache for 5 minutes
+    @st.cache_data(ttl=int(os.getenv("STREAMLIT_AUTO_REFRESH_INTERVAL", "30")))  # Configurable auto-refresh
     def execute_query(_self, query: str, params=None):
         """Execute SQL query and return DataFrame"""
         try:
@@ -81,7 +82,7 @@ class DatabaseConnector:
         WHERE dt >= CURRENT_DATE - INTERVAL '%s days'
         ORDER BY dt DESC, member_casual;
         """
-        return self.execute_query(query, params=[days])
+        return self.execute_query(query, params=(days,))
     
     def get_station_popularity(self, limit=20):
         """Get top stations by popularity"""
@@ -99,7 +100,7 @@ class DatabaseConnector:
         ORDER BY total_rides DESC
         LIMIT %s;
         """
-        return self.execute_query(query, params=[limit])
+        return self.execute_query(query, params=(limit,))
     
     def get_hourly_distribution(self):
         """Get hourly ride distribution"""
@@ -200,7 +201,7 @@ class DatabaseConnector:
         ORDER BY ride_count DESC
         LIMIT %s;
         """
-        return self.execute_query(query, params=[limit])
+        return self.execute_query(query, params=(limit,))
     
     def get_database_stats(self):
         """Get database statistics"""
