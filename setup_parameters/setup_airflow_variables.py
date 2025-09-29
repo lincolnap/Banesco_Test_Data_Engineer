@@ -10,7 +10,7 @@ import time
 import base64
 import sys
 
-def wait_for_airflow(max_retries=60, delay=3):
+def wait_for_airflow(max_retries=10, delay=60):
     """Wait for Airflow webserver to be ready"""
     airflow_url = "http://localhost:8080"
     
