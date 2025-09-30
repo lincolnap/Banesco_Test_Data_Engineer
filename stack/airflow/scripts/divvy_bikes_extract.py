@@ -40,8 +40,8 @@ def get_config_from_args():
 
 
 def get_s3a_jars(config):
-    """Get S3A JARs - JARs are now configured in the DAG"""
-    print("🏗️ JARs are configured in the DAG - no local JAR management needed")
+    """Get S3A JARs - JARs are included in the Docker image"""
+    print("🏗️ Using S3A JARs from Docker image")
     return []
 
 
@@ -65,11 +65,10 @@ def create_spark_session(config):
     else:
         print("🏗️ Skipping findspark init for cluster mode")
     
-    # Get JARs (download for local mode, use cluster JARs for cluster mode)
+    # Get JARs (included in Docker image)
     jar_paths = get_s3a_jars(config)
     
     # Create Spark session with MinIO configuration
-    # Note: JARs and basic Spark config are now handled in the DAG
     spark = SparkSession.builder \
         .appName("DivvyBikes_DataExtraction_Airflow") \
         .master(config['SPARK_MASTER_URL']) \
@@ -170,44 +169,60 @@ def main():
     # Get configuration from command line arguments
     config = get_config_from_args()
     
-    year_mon = config['YEAR_MONTH']
+    # Parse year_month - can be single value or comma-separated list
+    year_mon_input = config['YEAR_MONTH']
+    if ',' in year_mon_input:
+        year_mon_list = [ym.strip() for ym in year_mon_input.split(',')]
+    else:
+        year_mon_list = [year_mon_input]
     
-    # Source configuration
-    zip_url = f"https://divvy-tripdata.s3.amazonaws.com/{year_mon}-divvy-tripdata.zip"
-    bucket_name = config['OUTPUT_BUCKET']
-    file_name = f"{year_mon}-divvy-tripdata.csv"
-    output_path = f"s3a://{bucket_name}/banes_raw_divvy_bikes/"
+    print(f"📅 Processing {len(year_mon_list)} month(s): {year_mon_list}")
     
-    print(f"📊 Processing data for: {year_mon}")
-    print(f"📥 Source URL: {zip_url}")
-    print(f"💾 Output bucket: {bucket_name}")
-    
+    # Create Spark session once (outside the loop)
+    spark = None
     try:
-        # Create Spark session
         spark = create_spark_session(config)
         
-        # Download and extract CSV
-        df_pandas = download_and_extract_csv_with_pandas(zip_url, file_name)
-        
-        # Convert to Spark DataFrame
-        df = pandas_to_spark(df_pandas, spark)
-        
-        # Save as Parquet
-        success, path = save_parquet(df, "dt", output_path, spark)
-        
-        if success:
-            print(f"✅ Data extraction completed successfully!")
-            print(f"📍 Data saved to: {path}")
-        else:
-            print(f"❌ Data extraction failed!")
-            sys.exit(1)
+        for year_mon in year_mon_list:
+            # Source configuration
+            zip_url = f"https://divvy-tripdata.s3.amazonaws.com/{year_mon}-divvy-tripdata.zip"
+            bucket_name = config['OUTPUT_BUCKET']
+            file_name = f"{year_mon}-divvy-tripdata.csv"
+            output_path = f"s3a://{bucket_name}/banes_raw_divvy_bikes/"
             
+            print(f"\n📊 Processing data for: {year_mon}")
+            print(f"📥 Source URL: {zip_url}")
+            print(f"💾 Output bucket: {bucket_name}")
+            
+            try:
+                # Download and extract CSV
+                df_pandas = download_and_extract_csv_with_pandas(zip_url, file_name)
+                
+                # Convert to Spark DataFrame
+                df = pandas_to_spark(df_pandas, spark)
+                
+                # Save as Parquet
+                success, path = save_parquet(df, "dt", output_path, spark)
+                
+                if success:
+                    print(f"✅ Data extraction completed successfully for {year_mon}!")
+                    print(f"📍 Data saved to: {path}")
+                else:
+                    print(f"❌ Data extraction failed for {year_mon}!")
+                    continue  # Continue with next month instead of exiting
+                    
+            except Exception as e:
+                print(f"❌ Error processing {year_mon}: {str(e)}")
+                continue  # Continue with next month instead of exiting
+        
+        print(f"\n🎉 All months processed successfully!")
+        
     except Exception as e:
         print(f"❌ Error during execution: {str(e)}")
         sys.exit(1)
     finally:
         # Clean up Spark session
-        if 'spark' in locals():
+        if spark is not None:
             spark.stop()
             print("🧹 Spark session stopped")
 
